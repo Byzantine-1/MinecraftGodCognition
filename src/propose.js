@@ -1,17 +1,17 @@
 /**
- * Propose - Core proposal generation logic
- * Reads a bounded snapshot and outputs one typed action proposal
+ * Propose - Core world-core proposal generation logic
+ * Reads a bounded world snapshot and outputs one governance action proposal
  */
 
-import { ProposalType, Difficulty, isValidProposal } from './proposalDsl.js';
-import { calculateActionPriority } from './heuristics.js';
-import { evaluateHungerNeed, evaluateRestNeed, evaluateDanger, evaluateMineOpportunity } from './heuristics.js';
+import { ProposalType, isValidProposal } from './proposalDsl.js';
+import { evaluateGovernanceProposal } from './heuristics.js';
 
 /**
- * Generate a single action proposal from the current snapshot
+ * Generate a single governance action proposal from the current world snapshot
+ * Deterministic: same input always produces same output
  * @param {Object} snapshot - World state snapshot
- * @param {Object} profile - Agent profile with traits
- * @returns {Object} A typed Proposal
+ * @param {Object} profile - Governor profile with role and traits
+ * @returns {Object} A typed world-core Proposal
  * @throws {Error} If snapshot or profile is invalid
  */
 export function propose(snapshot, profile) {
@@ -19,96 +19,48 @@ export function propose(snapshot, profile) {
     throw new Error('Snapshot and profile are required');
   }
   
-  const { agent, nearby, environment } = snapshot;
-  const { traits, capabilities } = profile;
+  const { townId, day, mission, pressure, projects } = snapshot;
+  const { id: actorId, role } = profile;
   
-  // Evaluate candidate actions
-  const candidates = [];
+  // Evaluate proposal for this role
+  const evaluation = evaluateGovernanceProposal(snapshot, profile);
+  const proposalType = evaluation.type;
+  const priority = evaluation.priority;
   
-  // Candidate: EAT
-  const hungerScore = evaluateHungerNeed(agent.hunger);
-  if (hungerScore > 0 && capabilities.canEat) {
-    candidates.push({
-      type: ProposalType.EAT,
-      priority: hungerScore,
-      difficulty: Difficulty.TRIVIAL,
-      params: { targetFood: 'available' },
-      rationale: `Hunger level ${agent.hunger}/10 requires immediate attention`
-    });
+  // Build type-specific arguments
+  let args = {};
+  let reason = '';
+  
+  switch (proposalType) {
+    case ProposalType.MAYOR_ACCEPT_MISSION:
+      args = { missionId: 'pending' };
+      reason = `No active mission. Authority level ${(profile.traits.authority * 100).toFixed(0)}% ready to accept.`;
+      break;
+      
+    case ProposalType.PROJECT_ADVANCE:
+      args = { projectId: projects.length > 0 ? projects[0].id : 'primary' };
+      reason = `Threat level ${(pressure.threat * 100).toFixed(0)}% demands project advancement for defense.`;
+      break;
+      
+    case ProposalType.SALVAGE_PLAN:
+      args = { targetScarcity: 'general' };
+      reason = `Scarcity ${(pressure.scarcity * 100).toFixed(0)}% and dread ${(pressure.dread * 100).toFixed(0)}% require salvage response.`;
+      break;
+      
+    case ProposalType.TOWNSFOLK_TALK:
+      args = { talkType: 'morale-boost' };
+      reason = `Hope level ${(pressure.hope * 100).toFixed(0)}%. Time to speak with townspeople.`;
+      break;
   }
-  
-  // Candidate: REST
-  const restScore = evaluateRestNeed(agent.health);
-  if (restScore > 0 && traits.caution > 0.3) {
-    const danger = evaluateDanger(nearby);
-    if (danger < 0.5) {
-      candidates.push({
-        type: ProposalType.REST,
-        priority: restScore * (1 - danger),
-        difficulty: Difficulty.EASY,
-        params: { duration: 30 },
-        rationale: `Health at ${agent.health}/20, safe to rest`
-      });
-    }
-  }
-  
-  // Candidate: MINE
-  if (capabilities.canMine) {
-    const mineScore = evaluateMineOpportunity(environment.light, nearby);
-    if (mineScore > 0.3) {
-      candidates.push({
-        type: ProposalType.MINE,
-        priority: mineScore * traits.efficiency,
-        difficulty: Difficulty.MODERATE,
-        params: { targetBlock: 'stone' },
-        rationale: `Light level ${environment.light}/15 suitable for mining`
-      });
-    }
-  }
-  
-  // Candidate: MOVE
-  const danger = evaluateDanger(nearby);
-  if (danger > 0.3) {
-    candidates.push({
-      type: ProposalType.MOVE,
-      priority: danger * traits.caution,
-      difficulty: Difficulty.EASY,
-      params: { direction: 'away_from_threats', distance: 10 },
-      rationale: `${danger.toFixed(2)} threat level detected, moving to safety`
-    });
-  } else if (traits.curiosity > 0.6) {
-    candidates.push({
-      type: ProposalType.MOVE,
-      priority: traits.curiosity * 0.3,
-      difficulty: Difficulty.EASY,
-      params: { direction: 'random', distance: 5 },
-      rationale: `Curiosity drives exploration`
-    });
-  }
-  
-  // Default proposal if no candidates
-  if (candidates.length === 0) {
-    candidates.push({
-      type: ProposalType.MOVE,
-      priority: 0.5,
-      difficulty: Difficulty.TRIVIAL,
-      params: { direction: 'idle', distance: 0 },
-      rationale: `No immediate needs detected`
-    });
-  }
-  
-  // Select the highest priority candidate
-  const selected = candidates.reduce((best, candidate) => 
-    candidate.priority > best.priority ? candidate : best
-  );
   
   // Build proposal
   const proposal = {
-    type: selected.type,
-    confidence: Math.min(1, selected.priority + 0.3),
-    difficulty: selected.difficulty,
-    params: selected.params,
-    rationale: selected.rationale
+    type: proposalType,
+    actorId,
+    townId,
+    priority,
+    reason,
+    args
   };
   
   // Validate before returning

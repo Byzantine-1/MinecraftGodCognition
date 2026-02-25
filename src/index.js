@@ -1,13 +1,15 @@
 /**
  * Entry point for the minecraft-agent-cognition module
+ * World-core governance cognition MVP
  */
 
 export { propose } from './propose.js';
-export { ProposalType, Difficulty, isValidProposal } from './proposalDsl.js';
+export { ProposalType, isValidProposal } from './proposalDsl.js';
 export { 
-  defaultProfile, 
-  minerProfile, 
-  explorerProfile, 
+  Roles,
+  mayorProfile, 
+  captainProfile, 
+  wardenProfile, 
   isValidProfile 
 } from './agentProfiles.js';
 export { 
@@ -15,9 +17,9 @@ export {
   isValidSnapshot 
 } from './snapshotSchema.js';
 export {
-  evaluateHungerNeed,
-  evaluateRestNeed,
-  evaluateDanger,
-  evaluateMineOpportunity,
-  calculateActionPriority
+  evaluateMissionAcceptance,
+  evaluateProjectAdvance,
+  evaluateSalvagePlan,
+  evaluateTownsfolkTalk,
+  evaluateGovernanceProposal
 } from './heuristics.js';

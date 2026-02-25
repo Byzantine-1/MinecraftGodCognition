@@ -1,40 +1,49 @@
 /**
- * Snapshot Schema - Defines the bounded world state structure
+ * Snapshot Schema - Bounded world-core state for cognition layer
+ * Does NOT include local player survival state, inventory, or mobs
+ * Focuses on settlement governance, missions, and projects
  */
 
 /**
- * @typedef {Object} Agent
- * @property {string} id - Agent identifier
- * @property {number} health - [0, 20] health points
- * @property {number} hunger - [0, 10] hunger level
- * @property {number} x - X position
- * @property {number} y - Y position
- * @property {number} z - Z position
+ * @typedef {Object} Mission
+ * @property {string} id - Mission identifier
+ * @property {string} title - Mission title
+ * @property {string} description - Brief mission description
+ * @property {number} reward - Estimated value/reward
  */
 
 /**
- * @typedef {Object} Entity
- * @property {string} type - Entity type (e.g., 'zombie', 'creeper', 'item')
- * @property {number} distance - Distance from agent
- * @property {number} health - Current health if applicable
+ * @typedef {Object} SideQuest
+ * @property {string} id - Quest identifier
+ * @property {string} title - Quest title
+ * @property {number} complexity - Rough complexity estimate
  */
 
 /**
- * @typedef {Object} Item
- * @property {string} id - Item type identifier
- * @property {number} count - Stack count
- * @property {number} slot - Inventory slot [0, 26]
+ * @typedef {Object} Pressure
+ * @property {number} threat - [0, 1] external threat level
+ * @property {number} scarcity - [0, 1] resource scarcity level
+ * @property {number} hope - [0, 1] morale/hope level
+ * @property {number} dread - [0, 1] dread/despair level
+ */
+
+/**
+ * @typedef {Object} Project
+ * @property {string} id - Project identifier
+ * @property {string} name - Project name
+ * @property {number} progress - [0, 1] completion progress
+ * @property {string} status - 'planning', 'active', 'blocked', 'complete'
  */
 
 /**
  * @typedef {Object} Snapshot
- * @property {Agent} agent - Agent state
- * @property {Entity[]} nearby - Entities within perception range
- * @property {Item[]} inventory - Current inventory
- * @property {Object} environment - Environmental conditions
- * @property {number} environment.light - Light level [0, 15]
- * @property {boolean} environment.raining - Whether it's raining
- * @property {number} timestamp - Unix timestamp (ms)
+ * @property {number} day - In-game day counter (0+)
+ * @property {string} townId - Town/settlement identifier
+ * @property {Mission|null} mission - Currently active mission, or null
+ * @property {SideQuest[]} sideQuests - Bounded list of available side quests
+ * @property {Pressure} pressure - Ambient pressure/stress summary
+ * @property {Project[]} projects - Bounded list of active/priority projects
+ * @property {string|null} latestNetherEvent - Optional recent Nether event summary
  */
 
 /**
@@ -45,53 +54,60 @@
 export function isValidSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return false;
   
-  // Validate agent
-  if (!snapshot.agent || typeof snapshot.agent !== 'object') return false;
-  const { agent } = snapshot;
-  if (typeof agent.id !== 'string' || typeof agent.health !== 'number' || agent.health < 0 || agent.health > 20) return false;
-  if (typeof agent.hunger !== 'number' || agent.hunger < 0 || agent.hunger > 10) return false;
+  // Validate day
+  if (typeof snapshot.day !== 'number' || snapshot.day < 0) return false;
   
-  // Validate nearby entities
-  if (!Array.isArray(snapshot.nearby)) return false;
-  for (const entity of snapshot.nearby) {
-    if (typeof entity.type !== 'string' || typeof entity.distance !== 'number') return false;
+  // Validate townId
+  if (typeof snapshot.townId !== 'string' || snapshot.townId.length === 0) return false;
+  
+  // Validate mission (can be null or object with id/title)
+  if (snapshot.mission !== null && snapshot.mission !== undefined) {
+    if (typeof snapshot.mission !== 'object' || typeof snapshot.mission.id !== 'string') return false;
   }
   
-  // Validate inventory
-  if (!Array.isArray(snapshot.inventory)) return false;
-  for (const item of snapshot.inventory) {
-    if (typeof item.id !== 'string' || typeof item.count !== 'number') return false;
+  // Validate sideQuests
+  if (!Array.isArray(snapshot.sideQuests)) return false;
+  for (const quest of snapshot.sideQuests) {
+    if (typeof quest.id !== 'string' || typeof quest.title !== 'string') return false;
   }
   
-  // Validate environment
-  if (!snapshot.environment || typeof snapshot.environment !== 'object') return false;
-  if (typeof snapshot.environment.light !== 'number' || snapshot.environment.light < 0 || snapshot.environment.light > 15) return false;
-  if (typeof snapshot.environment.raining !== 'boolean') return false;
+  // Validate pressure
+  if (!snapshot.pressure || typeof snapshot.pressure !== 'object') return false;
+  const { threat, scarcity, hope, dread } = snapshot.pressure;
+  if (typeof threat !== 'number' || threat < 0 || threat > 1) return false;
+  if (typeof scarcity !== 'number' || scarcity < 0 || scarcity > 1) return false;
+  if (typeof hope !== 'number' || hope < 0 || hope > 1) return false;
+  if (typeof dread !== 'number' || dread < 0 || dread > 1) return false;
+  
+  // Validate projects
+  if (!Array.isArray(snapshot.projects)) return false;
+  for (const proj of snapshot.projects) {
+    if (typeof proj.id !== 'string' || typeof proj.name !== 'string') return false;
+    if (typeof proj.progress !== 'number' || proj.progress < 0 || proj.progress > 1) return false;
+  }
   
   return true;
 }
 
 /**
- * Create a default minimal snapshot
- * @param {string} agentId
+ * Create a default minimal snapshot (deterministic, no timestamps)
+ * @param {string} townId
+ * @param {number} day
  * @returns {Snapshot}
  */
-export function createDefaultSnapshot(agentId = 'agent-1') {
+export function createDefaultSnapshot(townId = 'town-1', day = 0) {
   return {
-    agent: {
-      id: agentId,
-      health: 20,
-      hunger: 10,
-      x: 0,
-      y: 64,
-      z: 0
+    day,
+    townId,
+    mission: null,
+    sideQuests: [],
+    pressure: {
+      threat: 0.3,
+      scarcity: 0.2,
+      hope: 0.7,
+      dread: 0.2
     },
-    nearby: [],
-    inventory: [],
-    environment: {
-      light: 15,
-      raining: false
-    },
-    timestamp: Date.now()
+    projects: [],
+    latestNetherEvent: null
   };
 }

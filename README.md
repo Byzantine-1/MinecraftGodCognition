@@ -1,37 +1,104 @@
 # minecraft-agent-cognition
 
-A minimal, deterministic proposal-only cognition layer for Minecraft agents.
+A minimal, deterministic proposal-only cognition layer for world-core governance.
 
-## Overview
+## What This Is
 
-This module reads a bounded snapshot of the game world and outputs a single typed action proposal. It does not perform orchestration, network calls, or direct world mutation.
+This module reads a **bounded world snapshot** and emits **one typed governance action proposal**. It is a cognition MVP that answers: "What should a governor do right now?"
 
-## Architecture
+## What This Is NOT
 
-- **Proposal DSL**: Typed action proposal definitions
-- **Agent Profiles**: Agent capabilities and personality traits
-- **Snapshot Schema**: Bounded world state schema
-- **Heuristics**: Decision-making rules and evaluations
-- **Propose**: Core proposal generation logic
+- ❌ A survival bot brain (no Minecraft entity state)
+- ❌ An orchestrator or state machine
+- ❌ An embodiment layer (doesn't perform actions)
+- ❌ LLM-integrated (pure deterministic heuristics)
+- ❌ Network-connected
+
+## Core Concept
+
+**Input:** Bounded world-core snapshot (day, mission, pressure, projects)  
+**Processing:** Role-based governance heuristics  
+**Output:** One typed proposal with priority and rationale
+
+## Proposal Types
+
+- `MAYOR_ACCEPT_MISSION` - Accept available mission
+- `PROJECT_ADVANCE` - Push active project forward
+- `SALVAGE_PLAN` - Respond to resource crisis
+- `TOWNSFOLK_TALK` - Morale/community action
+
+Each proposal includes:
+- `type` - Governance action type
+- `actorId` - Executor (governor role)
+- `townId` - Town identifier
+- `priority` - [0, 1] urgency
+- `reason` - Human-readable rationale
+- `args` - Type-specific parameters
+
+## Governor Roles
+
+### Mayor
+- **Goal:** Accept missions and grow the town
+- **Heuristic:** If no active mission → propose `MAYOR_ACCEPT_MISSION`
+- **Traits:** authority, pragmatism
+
+### Captain
+- **Goal:** Defend against threats via projects
+- **Heuristic:** If threat > 0.3 and projects exist → propose `PROJECT_ADVANCE`
+- **Traits:** courage
+
+### Warden
+- **Goal:** Reduce scarcity and dread
+- **Heuristic:** If (scarcity + dread) / 2 > 0.4 → propose `SALVAGE_PLAN`
+- **Traits:** pragmatism, prudence
+
+## Snapshot Structure
+
+```javascript
+{
+  day: 0,                           // In-game day
+  townId: 'town-1',                 // Settlement ID
+  mission: { id, title },           // Active mission or null
+  sideQuests: [],                   // Available quests (bounded)
+  pressure: {                       // Ambient stressors [0, 1]
+    threat,                         // External danger
+    scarcity,                       // Resource shortage
+    hope,                           // Morale level
+    dread                           // Despair level
+  },
+  projects: [],                     // Active governance projects (bounded)
+  latestNetherEvent: null           // Optional recent Nether event
+}
+```
+
+## Determinism
+
+**Same input → same output always.**
+
+No timestamps, randomness, or external state. All heuristics are pure functions.
 
 ## Usage
 
 ```javascript
 import { propose } from './src/propose.js';
+import { createDefaultSnapshot } from './src/snapshotSchema.js';
+import { mayorProfile } from './src/agentProfiles.js';
 
-const snapshot = {
-  agent: { id: 'agent-1', health: 20, hunger: 8 },
-  nearby: [],
-  inventory: []
-};
+const snapshot = createDefaultSnapshot('town-1', 5);
+snapshot.mission = null;
+snapshot.pressure = { threat: 0.2, scarcity: 0.3, hope: 0.7, dread: 0.1 };
 
-const profile = {
-  name: 'Miner',
-  traits: { riskTolerance: 0.5 }
-};
-
-const proposal = propose(snapshot, profile);
+const proposal = propose(snapshot, mayorProfile);
 console.log(proposal);
+// Output:
+// {
+//   type: 'MAYOR_ACCEPT_MISSION',
+//   actorId: 'mayor-1',
+//   townId: 'town-1',
+//   priority: 0.72,
+//   reason: '...',
+//   args: { ... }
+// }
 ```
 
 ## Running Tests
@@ -40,18 +107,36 @@ console.log(proposal);
 npm test
 ```
 
+All tests verify:
+- Proposal DSL shape validation
+- Deterministic behavior
+- Role-specific heuristics
+- Fallback proposals
+- Edge cases
+
 ## Project Structure
 
 ```
 src/
-  index.js              # Entry point
-  proposalDsl.js        # Proposal type definitions
-  agentProfiles.js      # Agent capability profiles
-  snapshotSchema.js     # World state schema
-  heuristics.js         # Decision-making heuristics
+  index.js              # Module exports
+  proposalDsl.js        # World-core proposal types
+  snapshotSchema.js     # Bounded snapshot validator
+  agentProfiles.js      # Governor role definitions
+  heuristics.js         # Role-based decision logic
   propose.js            # Proposal generation
 
 test/
   propose.test.js       # Proposal tests
   heuristics.test.js    # Heuristics tests
 ```
+
+## Future
+
+This is a foundation for:
+- Integration with a live world state provider
+- LLM-powered reason generation
+- Multi-actor coordination
+- Event-driven replanning
+
+But NOT yet.
+
