@@ -135,7 +135,46 @@ test/
   heuristics.test.js    # Heuristics tests
 ```
 
-## Future
+## Documentation
+
+- [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md) – How to connect cognition to world-core
+- [**WORLD_CORE_CONTRACT.md**](WORLD_CORE_CONTRACT.md) – Snapshot schema and command format
+
+
+
+Proposals are mapped to world-core commands for execution (not automated):
+
+```javascript
+import { proposalToCommand, proposalToDescription } from './src/proposalMapping.js';
+
+const proposal = propose(snapshot, mayorProfile);
+const command = proposalToCommand(proposal);
+const description = proposalToDescription(proposal);
+
+console.log(description);
+// Output: MAYOR_ACCEPT_MISSION: No active mission. Authority level 90% ready to accept. [no_active_mission]
+
+console.log(command);
+// Output: mission accept town-1 sq-gather-wood
+```
+
+## World-Core Integration Seam
+
+See [WORLD_CORE_CONTRACT.md](WORLD_CORE_CONTRACT.md) for the full snapshot schema and integration guide.
+
+**In world-core**, add a read-only command:
+
+```bash
+god snapshot <townId> --json
+```
+
+This exports a bounded snapshot matching the cognition contract. The seam is:
+
+- **Read-only**: World-core exports only
+- **Deterministic**: Same state → same snapshot
+- **Bounded**: Fixed schema, no unbounded lists
+- **Contract-driven**: Schema version v1 is stable
+
 
 This is a foundation for:
 - Integration with a live world state provider

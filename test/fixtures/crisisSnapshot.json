@@ -1,0 +1,22 @@
+{
+  "day": 42,
+  "townId": "town-1",
+  "mission": {
+    "id": "defend-settlement",
+    "title": "Defend the Settlement",
+    "description": "Hostile mobs approaching from the north"
+  },
+  "sideQuests": [
+    {"id": "sq-arrows", "title": "Gather Arrows", "complexity": 1}
+  ],
+  "pressure": {
+    "threat": 0.85,
+    "scarcity": 0.6,
+    "hope": 0.4,
+    "dread": 0.7
+  },
+  "projects": [
+    {"id": "wall-north", "name": "Build North Wall", "progress": 0.7, "status": "active"}
+  ],
+  "latestNetherEvent": "piglin_raid_nearby"
+}

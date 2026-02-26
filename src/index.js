@@ -23,3 +23,8 @@ export {
   evaluateTownsfolkTalk,
   evaluateGovernanceProposal
 } from './heuristics.js';
+export {
+  proposalToCommand,
+  proposalToDescription,
+  proposalsToCommands
+} from './proposalMapping.js';

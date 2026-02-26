@@ -1,0 +1,20 @@
+{
+  "day": 0,
+  "townId": "town-1",
+  "mission": null,
+  "sideQuests": [
+    {"id": "sq-gather-wood", "title": "Gather Wood", "complexity": 1},
+    {"id": "sq-gather-stone", "title": "Gather Stone", "complexity": 2}
+  ],
+  "pressure": {
+    "threat": 0.2,
+    "scarcity": 0.3,
+    "hope": 0.8,
+    "dread": 0.1
+  },
+  "projects": [
+    {"id": "farm-expansion", "name": "Expand Farm", "progress": 0.2, "status": "active"},
+    {"id": "storage-room", "name": "Build Storage", "progress": 0.0, "status": "planning"}
+  ],
+  "latestNetherEvent": null
+}
