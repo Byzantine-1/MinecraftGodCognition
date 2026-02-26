@@ -10,6 +10,7 @@ import { mayorProfile, captainProfile, wardenProfile, isValidProfile } from '../
 import { ProposalType } from '../src/proposalDsl.js';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 describe('Propose - World-Core Cognition', () => {
   describe('propose()', () => {
@@ -263,6 +264,8 @@ describe('Propose - World-Core Cognition', () => {
 
   describe('Integration with fixture snapshot', () => {
     it('should load realistic snapshot and generate valid proposal', () => {
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
       const data = fs.readFileSync(path.join(__dirname, 'fixtures', 'sampleSnapshot.json'), 'utf-8');
       const snapshot = JSON.parse(data);
       assert(isValidSnapshot(snapshot));
