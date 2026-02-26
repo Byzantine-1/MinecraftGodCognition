@@ -1,0 +1,24 @@
+{
+  "day": 15,
+  "townId": "town-threatened",
+  "mission": {
+    "id": "mission-mob-spawn",
+    "title": "Clear Mob Spawner Cave",
+    "description": "Dangerous spawner discovered nearby"
+  },
+  "sideQuests": [
+    {"id": "sq-arrows-gathering", "title": "Gather Arrows", "complexity": 1},
+    {"id": "sq-armor-repair", "title": "Repair Armor", "complexity": 2}
+  ],
+  "pressure": {
+    "threat": 0.72,
+    "scarcity": 0.45,
+    "hope": 0.55,
+    "dread": 0.4
+  },
+  "projects": [
+    {"id": "wall-perimeter", "name": "Perimeter Wall", "progress": 0.6, "status": "active"},
+    {"id": "watchtower", "name": "Watchtower", "progress": 0.2, "status": "active"}
+  ],
+  "latestNetherEvent": null
+}

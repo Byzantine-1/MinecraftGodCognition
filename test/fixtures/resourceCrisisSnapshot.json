@@ -1,0 +1,22 @@
+{
+  "day": 30,
+  "townId": "town-resource-crisis",
+  "mission": {
+    "id": "mission-resource-hunt",
+    "title": "Hunt for Resources",
+    "description": "Food and materials critically low"
+  },
+  "sideQuests": [
+    {"id": "sq-fishing-expedition", "title": "Fish for Food", "complexity": 1}
+  ],
+  "pressure": {
+    "threat": 0.35,
+    "scarcity": 0.88,
+    "hope": 0.3,
+    "dread": 0.75
+  },
+  "projects": [
+    {"id": "mine-expansion", "name": "Mine Expansion", "progress": 0.1, "status": "blocked"}
+  ],
+  "latestNetherEvent": null
+}

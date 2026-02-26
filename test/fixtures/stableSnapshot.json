@@ -1,0 +1,19 @@
+{
+  "day": 1,
+  "townId": "town-stable",
+  "mission": null,
+  "sideQuests": [
+    {"id": "sq-wood-gathering", "title": "Gather Wood for Winter", "complexity": 1}
+  ],
+  "pressure": {
+    "threat": 0.1,
+    "scarcity": 0.15,
+    "hope": 0.85,
+    "dread": 0.05
+  },
+  "projects": [
+    {"id": "farmhouse", "name": "Build Farmhouse", "progress": 0.3, "status": "active"},
+    {"id": "storage", "name": "Storage Shed", "progress": 0.0, "status": "planning"}
+  ],
+  "latestNetherEvent": null
+}
