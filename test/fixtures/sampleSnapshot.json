@@ -1,0 +1,14 @@
+{
+  "day": 42,
+  "townId": "town-1",
+  "mission": null,
+  "sideQuests": [
+    {"id": "gather_stone", "title": "Gather Stone", "complexity": 2, "description": "Collect 64 stones", "reward": 100}
+  ],
+  "pressure": {"threat": 0.65, "scarcity": 0.4, "hope": 0.5, "dread": 0.3},
+  "projects": [
+    {"id": "wall", "name": "Build Wall", "progress": 0.1, "status": "active"},
+    {"id": "farm", "name": "Expand Farm", "progress": 0.4, "status": "planning"}
+  ],
+  "latestNetherEvent": "piglin_raid"
+}

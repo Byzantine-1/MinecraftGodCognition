@@ -11,10 +11,11 @@ import {
   evaluateTownsfolkTalk,
   evaluateGovernanceProposal
 } from '../src/heuristics.js';
+import { ProposalType } from '../src/proposalDsl.js';
 
 describe('Governance Heuristics', () => {
   describe('evaluateMissionAcceptance', () => {
-    it('should return 0 when mission is active', () => {
+    it('should return zero score when mission is active', () => {
       const snapshot = {
         mission: { id: 'active-mission' }
       };
@@ -22,7 +23,8 @@ describe('Governance Heuristics', () => {
         traits: { authority: 0.8, pragmatism: 0.8 }
       };
       
-      assert.strictEqual(evaluateMissionAcceptance(snapshot, profile), 0);
+      const res = evaluateMissionAcceptance(snapshot, profile);
+      assert.strictEqual(res.score, 0);
     });
     
     it('should return positive score when no mission and traits are high', () => {
@@ -33,8 +35,10 @@ describe('Governance Heuristics', () => {
         traits: { authority: 0.9, pragmatism: 0.8 }
       };
       
-      const score = evaluateMissionAcceptance(snapshot, profile);
-      assert(score > 0);
+      const res = evaluateMissionAcceptance(snapshot, profile);
+      assert(res.score > 0);
+      assert(Array.isArray(res.reasonTags));
+      assert(res.reasonTags.includes('no_active_mission'));
     });
     
     it('should scale with authority and pragmatism traits', () => {
@@ -43,15 +47,15 @@ describe('Governance Heuristics', () => {
       const authoritative = { traits: { authority: 0.9, pragmatism: 0.7 } };
       const timid = { traits: { authority: 0.2, pragmatism: 0.3 } };
       
-      const authScore = evaluateMissionAcceptance(snapshot, authoritative);
-      const timidScore = evaluateMissionAcceptance(snapshot, timid);
+      const authScore = evaluateMissionAcceptance(snapshot, authoritative).score;
+      const timidScore = evaluateMissionAcceptance(snapshot, timid).score;
       
       assert(authScore > timidScore);
     });
   });
   
   describe('evaluateProjectAdvance', () => {
-    it('should return 0 when no threat', () => {
+    it('should return zero when no threat', () => {
       const snapshot = {
         pressure: { threat: 0.1 },
         projects: [{ id: 'p1', name: 'Defense Wall' }]
@@ -60,10 +64,11 @@ describe('Governance Heuristics', () => {
         traits: { courage: 0.9 }
       };
       
-      assert.strictEqual(evaluateProjectAdvance(snapshot, profile), 0);
+      const res = evaluateProjectAdvance(snapshot, profile);
+      assert.strictEqual(res.score, 0);
     });
     
-    it('should return 0 when no active projects', () => {
+    it('should return zero when no active projects', () => {
       const snapshot = {
         pressure: { threat: 0.8 },
         projects: []
@@ -72,7 +77,8 @@ describe('Governance Heuristics', () => {
         traits: { courage: 0.9 }
       };
       
-      assert.strictEqual(evaluateProjectAdvance(snapshot, profile), 0);
+      const res = evaluateProjectAdvance(snapshot, profile);
+      assert.strictEqual(res.score, 0);
     });
     
     it('should return positive score when threat > 0.3 and projects exist', () => {
@@ -84,13 +90,16 @@ describe('Governance Heuristics', () => {
         traits: { courage: 0.8 }
       };
       
-      const score = evaluateProjectAdvance(snapshot, profile);
-      assert(score > 0 && score <= 1);
+      const res = evaluateProjectAdvance(snapshot, profile);
+      assert(res.score > 0 && res.score <= 1);
+      assert(Array.isArray(res.reasonTags));
+      assert(res.reasonTags.includes('project_available'));
+      assert(res.targetId === 'p1');
     });
   });
   
   describe('evaluateSalvagePlan', () => {
-    it('should return 0 when strain is low', () => {
+    it('should return zero when strain is low', () => {
       const snapshot = {
         pressure: { scarcity: 0.2, dread: 0.1 }
       };
@@ -98,7 +107,8 @@ describe('Governance Heuristics', () => {
         traits: { pragmatism: 0.9 }
       };
       
-      assert.strictEqual(evaluateSalvagePlan(snapshot, profile), 0);
+      const res = evaluateSalvagePlan(snapshot, profile);
+      assert.strictEqual(res.score, 0);
     });
     
     it('should return positive score when strain > 0.4', () => {
@@ -109,8 +119,11 @@ describe('Governance Heuristics', () => {
         traits: { pragmatism: 0.9 }
       };
       
-      const score = evaluateSalvagePlan(snapshot, profile);
-      assert(score > 0 && score <= 1);
+      const res = evaluateSalvagePlan(snapshot, profile);
+      assert(res.score > 0 && res.score <= 1);
+      assert(Array.isArray(res.reasonTags));
+      assert(res.reasonTags.includes('high_strain'));
+      assert(res.targetId === 'scarcity' || res.targetId === 'dread');
     });
   });
   
@@ -121,7 +134,11 @@ describe('Governance Heuristics', () => {
       };
       const profile = {};
       
-      assert.strictEqual(evaluateTownsfolkTalk(snapshot, profile), 0.5);
+      const res = evaluateTownsfolkTalk(snapshot, profile);
+      assert.strictEqual(res.score, 0.5);
+      assert(Array.isArray(res.reasonTags));
+      assert(res.reasonTags.includes('low_hope'));
+      assert(res.targetId === 'morale-boost');
     });
     
     it('should return 0.2 when hope is adequate', () => {
@@ -130,12 +147,14 @@ describe('Governance Heuristics', () => {
       };
       const profile = {};
       
-      assert.strictEqual(evaluateTownsfolkTalk(snapshot, profile), 0.2);
+      const res = evaluateTownsfolkTalk(snapshot, profile);
+      assert.strictEqual(res.score, 0.2);
+      assert(res.targetId === 'casual');
     });
   });
   
   describe('evaluateGovernanceProposal', () => {
-    it('should return a proposal with type and priority', () => {
+    it('should return a proposal object with required fields', () => {
       const snapshot = {
         mission: null,
         pressure: { threat: 0.2, scarcity: 0.2, hope: 0.7, dread: 0.1 },
@@ -150,6 +169,7 @@ describe('Governance Heuristics', () => {
       assert(result.type);
       assert(typeof result.priority === 'number');
       assert(result.priority >= 0 && result.priority <= 1);
+      assert(Array.isArray(result.reasonTags));
     });
     
     it('should propose MAYOR_ACCEPT_MISSION for mayor when no mission', () => {
@@ -164,7 +184,7 @@ describe('Governance Heuristics', () => {
       };
       
       const result = evaluateGovernanceProposal(snapshot, profile);
-      assert.strictEqual(result.type, 'MAYOR_ACCEPT_MISSION');
+      assert.strictEqual(result.type, ProposalType.MAYOR_ACCEPT_MISSION);
     });
     
     it('should propose PROJECT_ADVANCE for captain when threat is high', () => {
@@ -211,6 +231,23 @@ describe('Governance Heuristics', () => {
       const result = evaluateGovernanceProposal(snapshot, profile);
       assert(result.type);
       assert(result.priority >= 0 && result.priority <= 1);
+    });
+
+    it('should penalize repeated type in memory', () => {
+      const snapshot = { mission: null, pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
+      const profile = { role: 'mayor', traits: { authority: 0.5, pragmatism: 1, courage: 0, prudence: 0 } };
+      const base = evaluateGovernanceProposal(snapshot, profile);
+      const mem = { lastType: base.type, repeatCount: 3 };
+      const penalized = evaluateGovernanceProposal(snapshot, profile, mem);
+      assert(penalized.priority < base.priority);
+    });
+
+    it('should respect tie-breaker ordering when priorities equal', () => {
+      const snapshot = { mission: null, pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
+      const profile = { role: 'mayor', traits: { authority: 0.5, pragmatism: 1, courage: 0, prudence: 0 } };
+      // mission and talk both score 0.5
+      const result = evaluateGovernanceProposal(snapshot, profile);
+      assert.strictEqual(result.type, ProposalType.MAYOR_ACCEPT_MISSION);
     });
   });
 });

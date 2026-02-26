@@ -17,6 +17,7 @@ export const ProposalType = {
  * @property {string} townId - Town/settlement identifier
  * @property {number} priority - [0, 1] priority/urgency score
  * @property {string} reason - Brief human-readable rationale
+ * @property {string[]} reasonTags - Array of machine-readable tags explaining rationale
  * @property {Object} args - Type-specific arguments (optional)
  */
 
@@ -32,5 +33,9 @@ export function isValidProposal(proposal) {
   if (typeof proposal.townId !== 'string' || proposal.townId.length === 0) return false;
   if (typeof proposal.priority !== 'number' || proposal.priority < 0 || proposal.priority > 1) return false;
   if (typeof proposal.reason !== 'string' || proposal.reason.length === 0) return false;
+  if (!Array.isArray(proposal.reasonTags)) return false;
+  for (const tag of proposal.reasonTags) {
+    if (typeof tag !== 'string') return false;
+  }
   return true;
 }

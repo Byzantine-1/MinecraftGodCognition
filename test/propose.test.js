@@ -5,9 +5,11 @@
 import assert from 'assert';
 import { describe, it } from 'node:test';
 import { propose } from '../src/propose.js';
-import { createDefaultSnapshot } from '../src/snapshotSchema.js';
-import { mayorProfile, captainProfile, wardenProfile } from '../src/agentProfiles.js';
+import { createDefaultSnapshot, isValidSnapshot } from '../src/snapshotSchema.js';
+import { mayorProfile, captainProfile, wardenProfile, isValidProfile } from '../src/agentProfiles.js';
 import { ProposalType } from '../src/proposalDsl.js';
+import fs from 'fs';
+import path from 'path';
 
 describe('Propose - World-Core Cognition', () => {
   describe('propose()', () => {
@@ -46,6 +48,25 @@ describe('Propose - World-Core Cognition', () => {
         /Snapshot and profile are required/
       );
     });
+
+    it('should reject invalid snapshot shapes', () => {
+      const badSnapshot = { day: -1 };
+      assert(!isValidSnapshot(badSnapshot));
+      assert.throws(
+        () => propose(badSnapshot, mayorProfile),
+        /Invalid snapshot structure/
+      );
+    });
+
+    it('should reject invalid profile shapes', () => {
+      const snapshot = createDefaultSnapshot();
+      const badProfile = { id: '', role: 'unknown' };
+      assert(!isValidProfile(badProfile));
+      assert.throws(
+        () => propose(snapshot, badProfile),
+        /Invalid profile structure/
+      );
+    });
     
     it('should produce deterministic output for same input', () => {
       const snapshot = createDefaultSnapshot('town-1', 5);
@@ -66,17 +87,43 @@ describe('Propose - World-Core Cognition', () => {
     it('should propose MAYOR_ACCEPT_MISSION when no mission is active', () => {
       const snapshot = createDefaultSnapshot('town-1', 0);
       snapshot.mission = null;
+      snapshot.sideQuests = [{ id: 'sq-1', title: 'Gather wood', complexity: 1 }];
       
       const proposal = propose(snapshot, mayorProfile);
       assert.strictEqual(proposal.type, ProposalType.MAYOR_ACCEPT_MISSION);
+      // missionId should be pulled from sideQuests
+      assert.strictEqual(proposal.args.missionId, 'sq-1');
+      assert(Array.isArray(proposal.reasonTags));
+      assert(proposal.reasonTags.includes('no_active_mission'));
     });
-    
+
     it('should not propose MAYOR_ACCEPT_MISSION when mission is already active', () => {
       const snapshot = createDefaultSnapshot('town-1', 0);
       snapshot.mission = { id: 'active-mission', title: 'Defense the settlement' };
       
       const proposal = propose(snapshot, mayorProfile);
       assert.notStrictEqual(proposal.type, ProposalType.MAYOR_ACCEPT_MISSION);
+    });
+
+    it('should break ties by type order when scores equal', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.mission = null;
+      snapshot.sideQuests = [{ id: 'sq-1', title: 'Task' }];
+      // set traits so mission score equals talk fallback (0.5)
+      const profile = { ...mayorProfile, traits: { authority: 0.5, pragmatism: 1, courage: 0, prudence: 0 } };
+      snapshot.pressure = { threat:0, scarcity:0, hope:0.5, dread:0 };
+      const proposal = propose(snapshot, profile);
+      assert.strictEqual(proposal.type, ProposalType.MAYOR_ACCEPT_MISSION);
+    });
+
+    it('should apply memory penalty to repeated proposals', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.mission = null;
+      const mem = { lastType: ProposalType.MAYOR_ACCEPT_MISSION, repeatCount: 2 };
+      const p1 = propose(snapshot, mayorProfile, mem);
+      // priority should be lower due to penalty
+      const p2 = propose(snapshot, mayorProfile, {});
+      assert(p1.priority < p2.priority);
     });
     
     it('should include actorId from profile', () => {
@@ -120,8 +167,21 @@ describe('Propose - World-Core Cognition', () => {
       
       const proposal = propose(snapshot, captainProfile);
       if (proposal.type === ProposalType.PROJECT_ADVANCE) {
-        assert(proposal.args.projectId);
+        assert(proposal.args.projectId === 'wall-1');
+        assert(Array.isArray(proposal.reasonTags));
+        assert(proposal.reasonTags.includes('project_available'));
       }
+    });
+
+    it('should choose alphabetically lowest project when multiple exist', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.pressure = { threat: 0.8, scarcity: 0.2, hope: 0.7, dread: 0.2 };
+      snapshot.projects = [
+        { id: 'beta', name: 'B', progress: 0.1, status: 'active' },
+        { id: 'alpha', name: 'A', progress: 0.2, status: 'active' }
+      ];
+      const proposal = propose(snapshot, captainProfile);
+      assert.strictEqual(proposal.args.projectId, 'alpha');
     });
   });
   
@@ -132,6 +192,10 @@ describe('Propose - World-Core Cognition', () => {
       
       const proposal = propose(snapshot, wardenProfile);
       assert.strictEqual(proposal.type, ProposalType.SALVAGE_PLAN);
+      assert(Array.isArray(proposal.reasonTags));
+      assert(proposal.reasonTags.includes('high_strain'));
+      // focus should match the larger pressure component (scarcity)
+      assert(proposal.args.focus === 'scarcity');
     });
     
     it('should not propose SALVAGE_PLAN when strain is low', () => {
@@ -163,6 +227,9 @@ describe('Propose - World-Core Cognition', () => {
       // When strain is low but hope is low, TOWNSFOLK_TALK is fallback
       if (snapshot.pressure.scarcity < 0.4 && (snapshot.pressure.scarcity + snapshot.pressure.dread) / 2 < 0.4) {
         assert.strictEqual(proposal.type, ProposalType.TOWNSFOLK_TALK);
+        assert(Array.isArray(proposal.reasonTags));
+        assert(proposal.reasonTags.includes('low_hope'));
+        assert(proposal.args.talkType === 'morale-boost');
       }
     });
   });
@@ -174,6 +241,7 @@ describe('Propose - World-Core Cognition', () => {
       
       assert(typeof proposal.priority === 'number');
       assert(proposal.priority >= 0 && proposal.priority <= 1);
+      assert(Array.isArray(proposal.reasonTags));
     });
     
     it('should always include a non-empty reason string', () => {
@@ -190,6 +258,19 @@ describe('Propose - World-Core Cognition', () => {
       
       assert(proposal.args);
       assert(typeof proposal.args === 'object');
+    });
+  });
+
+  describe('Integration with fixture snapshot', () => {
+    it('should load realistic snapshot and generate valid proposal', () => {
+      const data = fs.readFileSync(path.join(__dirname, 'fixtures', 'sampleSnapshot.json'), 'utf-8');
+      const snapshot = JSON.parse(data);
+      assert(isValidSnapshot(snapshot));
+
+      const proposal = propose(snapshot, captainProfile);
+      assert(proposal && typeof proposal === 'object');
+      assert(Array.isArray(proposal.reasonTags));
+      assert(proposal.actorId === captainProfile.id);
     });
   });
 });

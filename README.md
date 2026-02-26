@@ -33,6 +33,7 @@ Each proposal includes:
 - `townId` - Town identifier
 - `priority` - [0, 1] urgency
 - `reason` - Human-readable rationale
+- `reasonTags` - Array of machine-readable rationale tags (e.g. `no_active_mission`, `high_threat`)
 - `args` - Type-specific parameters
 
 ## Governor Roles
@@ -74,6 +75,8 @@ Each proposal includes:
 ## Determinism
 
 **Same input → same output always.**
+
+Input validation is strict (`isValidSnapshot`, `isValidProfile`), and invalid shapes raise errors rather than failing silently. A small, bounded memory object may be passed to `propose()` (`{lastType, lastTarget, repeatCount}`) which enforces a deterministic repetition penalty but does not affect overall determinism.
 
 No timestamps, randomness, or external state. All heuristics are pure functions.
 
@@ -126,7 +129,9 @@ src/
   propose.js            # Proposal generation
 
 test/
-  propose.test.js       # Proposal tests
+  fixtures/             # sample snapshot JSON used by integration tests
+    sampleSnapshot.json
+  propose.test.js       # Proposal tests (validation, tie-break, memory, fixtures)
   heuristics.test.js    # Heuristics tests
 ```
 
@@ -137,6 +142,8 @@ This is a foundation for:
 - LLM-powered reason generation
 - Multi-actor coordination
 - Event-driven replanning
+
+The current output schema (proposal contract v1) is intentionally minimal and additive; downstream consumers should expect `reasonTags` alongside existing fields and may ignore unknown `args`. This contract will remain stable until v2.
 
 But NOT yet.
 

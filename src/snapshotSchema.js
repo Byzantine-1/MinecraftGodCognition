@@ -16,7 +16,7 @@
  * @typedef {Object} SideQuest
  * @property {string} id - Quest identifier
  * @property {string} title - Quest title
- * @property {number} complexity - Rough complexity estimate
+ * @property {number} [complexity] - Rough complexity estimate (optional)
  */
 
 /**
@@ -69,6 +69,7 @@ export function isValidSnapshot(snapshot) {
   if (!Array.isArray(snapshot.sideQuests)) return false;
   for (const quest of snapshot.sideQuests) {
     if (typeof quest.id !== 'string' || typeof quest.title !== 'string') return false;
+    if ('complexity' in quest && typeof quest.complexity !== 'number') return false;
   }
   
   // Validate pressure
