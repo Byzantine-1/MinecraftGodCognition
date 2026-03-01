@@ -128,15 +128,17 @@ Malformed args are rejected. Command mapping does not normalize invalid values i
 
 ### Mayor
 - Emits `MAYOR_ACCEPT_MISSION` only when there is no active mission and at least one side quest.
-- Chooses the lexicographically lowest side quest id.
+- Ranks side quests by complexity fit using `authority`, `pragmatism`, `prudence`, mayor goals, and `latestNetherEvent`.
+- Uses lexicographic `sideQuest.id` tie-breaking when ranked mission scores are equal.
 
 ### Captain
-- Emits `PROJECT_ADVANCE` when `pressure.threat > 0.3` and at least one project exists.
-- Chooses the lexicographically lowest project id.
+- Emits `PROJECT_ADVANCE` when `pressure.threat > 0.3` and at least one actionable project exists.
+- Treats only `active` and `planning` projects as actionable, and skips `blocked` or `complete` projects.
+- Ranks actionable projects by status, progress, captain goals, and `latestNetherEvent`, then uses lexicographic `project.id` tie-breaking.
 
 ### Warden
-- Emits `SALVAGE_PLAN` when `(scarcity + dread) / 2 > 0.4`.
-- Chooses `focus = 'scarcity'` when scarcity is greater than or equal to dread, otherwise `focus = 'dread'`.
+- Emits `SALVAGE_PLAN` when strain remains high after considering scarcity, dread, hope, `latestNetherEvent`, goals, and `mission.reward` relief if present.
+- Chooses `focus = 'scarcity'` or `focus = 'dread'` from the stronger deterministic signal after those adjustments.
 
 ### Fallback
 - Emits `TOWNSFOLK_TALK`.

@@ -291,6 +291,7 @@ If the proposal envelope is invalid, command mapping must fail fast.
 - `sideQuests` are canonicalized by `id`, then `title`, then `complexity`.
 - `projects` are canonicalized by `id`, then `name`, then `progress`, then `status`.
 - Reordered equivalent valid snapshots produce the same `snapshotHash`.
+- `latestNetherEvent`, project `status`/`progress`, mission `reward`, side quest `complexity`, and profile traits/goals all affect heuristic scoring deterministically when present.
 - `decisionEpoch` currently has day-level granularity because it is set from `snapshot.day`.
 - The optional `memory` input changes proposal selection deterministically when its value changes.
 

@@ -58,7 +58,9 @@ Emission condition:
 - `snapshot.sideQuests.length > 0`
 
 Target selection:
-- lexicographically lowest `sideQuest.id`
+- rank side quests by deterministic complexity fit
+- inputs used: `sideQuest.complexity`, mayor `authority`, mayor `pragmatism`, mayor `prudence`, mayor goals, and `latestNetherEvent`
+- final tie-break: lexicographically lowest `sideQuest.id`
 
 Args:
 
@@ -77,6 +79,8 @@ Preconditions:
 
 Typical reason tags:
 - `no_active_mission`
+- `mission_ranked`
+- `nether_event_pressure` when `latestNetherEvent` adds urgency
 
 Command mapping:
 - `mission accept <townId> <missionId>`
@@ -85,10 +89,13 @@ Command mapping:
 
 Emission condition:
 - `snapshot.pressure.threat > 0.3`
-- `snapshot.projects.length > 0`
+- at least one actionable project exists
 
 Target selection:
-- lexicographically lowest `project.id`
+- actionable projects are `status === 'active'` or `status === 'planning'`
+- blocked and complete projects are skipped
+- actionable projects are ranked by `status`, `progress`, captain traits/goals, and `latestNetherEvent`
+- final tie-break: lexicographically lowest `project.id`
 
 Args:
 
@@ -107,6 +114,8 @@ Preconditions:
 Typical reason tags:
 - `high_threat`
 - `project_available`
+- `blocked_projects_skipped` when blocked projects are present
+- `nether_event_pressure` when `latestNetherEvent` adds urgency
 
 Command mapping:
 - `project advance <townId> <projectId>`
@@ -114,11 +123,12 @@ Command mapping:
 ### 3. `SALVAGE_PLAN`
 
 Emission condition:
-- `(snapshot.pressure.scarcity + snapshot.pressure.dread) / 2 > 0.4`
+- deterministic scarcity/dread strain remains above `0.4`
 
 Target selection:
-- `scarcity` when `scarcity >= dread`
-- otherwise `dread`
+- compute scarcity pressure from `pressure.scarcity`, warden goals, `latestNetherEvent`, and subtract expected relief from `mission.reward` if present
+- compute dread pressure from `pressure.dread`, `pressure.hope`, `latestNetherEvent`, and warden goals
+- choose the stronger signal, then tie-break with the raw `scarcity >= dread` rule
 
 Args:
 
@@ -141,6 +151,8 @@ Preconditions:
 
 Typical reason tags:
 - `high_strain`
+- `nether_event_pressure` when `latestNetherEvent` adds strain
+- `mission_relief_expected` when `mission.reward` tempers scarcity pressure
 
 Command mapping:
 - `salvage initiate <townId> <focus>`

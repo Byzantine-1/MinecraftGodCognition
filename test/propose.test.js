@@ -114,6 +114,34 @@ describe('Propose - World-Core Cognition', () => {
       assert(Array.isArray(proposal.preconditions));
     });
 
+    it('should choose the best ranked mission consistently across reordered input', () => {
+      const orderedSnapshot = createDefaultSnapshot('town-1', 0);
+      orderedSnapshot.mission = null;
+      orderedSnapshot.sideQuests = [
+        { id: 'sq-alpha', title: 'Gather wood', complexity: 1 },
+        { id: 'sq-zeta', title: 'Nether push', complexity: 8 }
+      ];
+
+      const reorderedSnapshot = createDefaultSnapshot('town-1', 0);
+      reorderedSnapshot.mission = null;
+      reorderedSnapshot.sideQuests = [
+        { id: 'sq-zeta', title: 'Nether push', complexity: 8 },
+        { id: 'sq-alpha', title: 'Gather wood', complexity: 1 }
+      ];
+
+      const boldMayor = {
+        ...mayorProfile,
+        traits: { authority: 0.95, pragmatism: 0.85, courage: 0.6, prudence: 0.1 }
+      };
+
+      const orderedProposal = propose(orderedSnapshot, boldMayor);
+      const reorderedProposal = propose(reorderedSnapshot, boldMayor);
+
+      assert.strictEqual(orderedProposal.args.missionId, 'sq-zeta');
+      assert.deepStrictEqual(orderedProposal.args, reorderedProposal.args);
+      assert.strictEqual(orderedProposal.snapshotHash, reorderedProposal.snapshotHash);
+    });
+
     it('should not propose MAYOR_ACCEPT_MISSION when mission is already active', () => {
       const snapshot = createDefaultSnapshot('town-1', 0);
       snapshot.mission = { id: 'active-mission', title: 'Defense the settlement' };
@@ -200,15 +228,53 @@ describe('Propose - World-Core Cognition', () => {
       }
     });
 
-    it('should choose alphabetically lowest project when multiple exist', () => {
+    it('should skip blocked projects and choose an actionable project', () => {
       const snapshot = createDefaultSnapshot('town-1', 0);
       snapshot.pressure = { threat: 0.8, scarcity: 0.2, hope: 0.7, dread: 0.2 };
       snapshot.projects = [
-        { id: 'beta', name: 'B', progress: 0.1, status: 'active' },
+        { id: 'alpha-blocked', name: 'Blocked Wall', progress: 0.95, status: 'blocked' },
+        { id: 'beta-active', name: 'Perimeter Wall', progress: 0.6, status: 'active' },
+        { id: 'gamma-planning', name: 'Watchtower', progress: 0.2, status: 'planning' }
+      ];
+
+      const proposal = propose(snapshot, captainProfile);
+      assert.strictEqual(proposal.args.projectId, 'beta-active');
+      assert(proposal.reasonTags.includes('blocked_projects_skipped'));
+    });
+
+    it('should use deterministic tie-breaking when projects are equally ranked', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.pressure = { threat: 0.8, scarcity: 0.2, hope: 0.7, dread: 0.2 };
+      snapshot.projects = [
+        { id: 'beta', name: 'B', progress: 0.2, status: 'active' },
         { id: 'alpha', name: 'A', progress: 0.2, status: 'active' }
       ];
+
       const proposal = propose(snapshot, captainProfile);
       assert.strictEqual(proposal.args.projectId, 'alpha');
+    });
+
+    it('should score threat higher when a nether event is present', () => {
+      const calmSnapshot = createDefaultSnapshot('town-1', 0);
+      calmSnapshot.pressure = { threat: 0.55, scarcity: 0.2, hope: 0.7, dread: 0.2 };
+      calmSnapshot.projects = [
+        { id: 'wall-1', name: 'Wall', progress: 0.4, status: 'active' }
+      ];
+
+      const eventSnapshot = {
+        ...calmSnapshot,
+        latestNetherEvent: 'piglin_raid_nearby'
+      };
+
+      const calmProposal = propose(calmSnapshot, captainProfile);
+      const eventProposal = propose(eventSnapshot, captainProfile);
+      const eventProposalRepeat = propose(eventSnapshot, captainProfile);
+
+      assert.strictEqual(calmProposal.type, ProposalType.PROJECT_ADVANCE);
+      assert.strictEqual(eventProposal.type, ProposalType.PROJECT_ADVANCE);
+      assert(eventProposal.priority > calmProposal.priority);
+      assert.strictEqual(eventProposal.priority, eventProposalRepeat.priority);
+      assert(eventProposal.reasonTags.includes('nether_event_pressure'));
     });
   });
   
@@ -231,6 +297,33 @@ describe('Propose - World-Core Cognition', () => {
       
       const proposal = propose(snapshot, wardenProfile);
       assert.notStrictEqual(proposal.type, ProposalType.SALVAGE_PLAN);
+    });
+
+    it('should produce replay-stable trait-driven salvage differences', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.mission = { id: 'resource-hunt', title: 'Resource Hunt', reward: 180 };
+      snapshot.pressure = { threat: 0.2, scarcity: 0.75, hope: 0.35, dread: 0.45 };
+      snapshot.latestNetherEvent = 'piglin_raid_nearby';
+
+      const surplusWarden = {
+        ...wardenProfile,
+        goals: { reducePressure: false, salvageResources: true, maintainSurplus: true }
+      };
+      const calmingWarden = {
+        ...wardenProfile,
+        goals: { reducePressure: true, salvageResources: false, maintainSurplus: false }
+      };
+
+      const surplusProposal = propose(snapshot, surplusWarden);
+      const calmingProposal = propose(snapshot, calmingWarden);
+      const calmingRepeat = propose(snapshot, calmingWarden);
+
+      assert.strictEqual(surplusProposal.type, ProposalType.SALVAGE_PLAN);
+      assert.strictEqual(surplusProposal.args.focus, 'scarcity');
+      assert.strictEqual(calmingProposal.type, ProposalType.SALVAGE_PLAN);
+      assert.strictEqual(calmingProposal.args.focus, 'dread');
+      assert.deepStrictEqual(calmingProposal.args, calmingRepeat.args);
+      assert.strictEqual(calmingProposal.priority, calmingRepeat.priority);
     });
   });
   

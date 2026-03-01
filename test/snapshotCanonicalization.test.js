@@ -72,7 +72,6 @@ describe('Snapshot Canonicalization', () => {
 
     assert.strictEqual(proposalA.type, ProposalType.MAYOR_ACCEPT_MISSION);
     assert.strictEqual(proposalA.type, proposalB.type);
-    assert.deepStrictEqual(proposalA.args, { missionId: 'sq-alpha' });
     assert.deepStrictEqual(proposalA.args, proposalB.args);
     assert.strictEqual(proposalA.snapshotHash, proposalB.snapshotHash);
     assert.strictEqual(proposalA.proposalId, proposalB.proposalId);

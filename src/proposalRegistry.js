@@ -11,6 +11,12 @@ function getLowestId(items = []) {
     .sort()[0] || null;
 }
 
+function getLowestActionableProjectId(projects = []) {
+  return getLowestId(
+    projects.filter(project => project.status === 'active' || project.status === 'planning')
+  );
+}
+
 function hasExactStringArgs(args, requiredKeys) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
   if (!hasOnlyKeys(args, requiredKeys)) return false;
@@ -36,7 +42,7 @@ function buildMissionProposal({ snapshot, profile, targetId }) {
 }
 
 function buildProjectAdvanceProposal({ snapshot, targetId }) {
-  const projectId = targetId || getLowestId(snapshot.projects);
+  const projectId = targetId || getLowestActionableProjectId(snapshot.projects);
   return {
     args: { projectId },
     reason: `Threat level ${(snapshot.pressure.threat * 100).toFixed(0)}% demands project advancement for defense.`,
