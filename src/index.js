@@ -60,11 +60,20 @@ export {
   isValidDecisionInspectionPayload,
   isValidImmersionInput,
   isValidImmersionProvider,
+  isValidImmersionResult,
   isValidNarrativeContext,
   normalizeNarrativeContext,
   resolveImmersionConfig,
   resolveImmersionProvider
 } from './immersion.js';
+export {
+  createEmbodimentRequestPreview,
+  isValidEmbodimentRequestPreview
+} from './embodimentPreview.js';
+export {
+  isValidDemoFlowReport,
+  runDemoFlow
+} from './demoFlow.js';
 export {
   ProjectStatuses,
   SchemaVersion,

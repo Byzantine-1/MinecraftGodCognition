@@ -5,7 +5,9 @@ export const SchemaVersion = Object.freeze({
   DECISION_INSPECTION: 'decision-inspection.v1',
   HANDOFF: 'execution-handoff.v1',
   EXECUTION_RESULT: 'execution-result.v1',
-  IMMERSION_RESULT: 'immersion-result.v1'
+  IMMERSION_RESULT: 'immersion-result.v1',
+  EMBODIMENT_PREVIEW: 'embodiment-preview.v1',
+  DEMO_FLOW: 'demo-flow.v1'
 });
 
 export const SnapshotBounds = Object.freeze({

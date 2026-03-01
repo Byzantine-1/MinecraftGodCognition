@@ -347,6 +347,41 @@ export function isValidImmersionProvider(provider) {
   );
 }
 
+/**
+ * Validate an immersion result payload.
+ * @param {Object} result
+ * @returns {boolean}
+ */
+export function isValidImmersionResult(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
+  if (result.schemaVersion !== SchemaVersion.IMMERSION_RESULT) return false;
+  if (!ImmersionArtifactType.includes(result.artifactType)) return false;
+  if (!ImmersionStatus.includes(result.status)) return false;
+  if (result.advisory !== true) return false;
+  if (!result.authority || typeof result.authority !== 'object' || Array.isArray(result.authority)) return false;
+  if (result.authority.proposalSelection !== false) return false;
+  if (result.authority.commandExecution !== false) return false;
+  if (result.authority.stateMutation !== false) return false;
+  if (!result.provider || typeof result.provider !== 'object' || Array.isArray(result.provider)) return false;
+  if (typeof result.provider.requested !== 'string' || result.provider.requested.length === 0) return false;
+  if (typeof result.provider.used !== 'string' || result.provider.used.length === 0) return false;
+  if (result.provider.model !== null && !isNonEmptyString(result.provider.model)) return false;
+  if (!result.prompt || typeof result.prompt !== 'object' || Array.isArray(result.prompt)) return false;
+  if (!isNonEmptyString(result.prompt.hash)) return false;
+  if (!result.sourceSchemas || typeof result.sourceSchemas !== 'object' || Array.isArray(result.sourceSchemas)) return false;
+  if (result.content !== null && !isNonEmptyString(result.content)) return false;
+  if (hasOwn(result, 'error')) {
+    if (!result.error || typeof result.error !== 'object' || Array.isArray(result.error)) return false;
+    if (!isNonEmptyString(result.error.code) || !isNonEmptyString(result.error.message)) return false;
+  }
+
+  if (result.status === 'generated' && !isNonEmptyString(result.content)) return false;
+  if (result.status === 'fallback' && !isNonEmptyString(result.content)) return false;
+  if (result.status === 'unavailable' && result.content !== null) return false;
+
+  return true;
+}
+
 function isValidWorldSummary(worldSummary) {
   if (worldSummary === undefined || worldSummary === null) return true;
   if (typeof worldSummary === 'string') return worldSummary.trim().length > 0;

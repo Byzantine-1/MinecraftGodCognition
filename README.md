@@ -246,6 +246,23 @@ Artifact types:
 When the provider is missing or fails, the adapter degrades gracefully with deterministic fallback text by default.
 When present, `narrativeContext` can carry advisory rails for `narrativeState`, `chronicleSummary`, `factionTone`, `speakerVoiceProfiles`, and `canonGuardrails`.
 
+## Demo Flow
+
+Run a deterministic full-stack demo with:
+
+```bash
+npm run demo -- --snapshot test/fixtures/stableSnapshot.json --profile mayor --narrative test/fixtures/demoNarrativeContext.json --world-summary test/fixtures/demoWorldSummary.json
+```
+
+The demo prints machine-readable JSON containing:
+- decision inspection
+- execution handoff
+- local execution result
+- immersion result
+- embodiment preview
+
+The demo never executes a real game command, never requires a live Mineflayer bot, and uses deterministic immersion fallback text when no provider is available.
+
 ## Tests
 
 Run:

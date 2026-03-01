@@ -1,0 +1,46 @@
+{
+  "narrativeState": {
+    "arcId": "winter-preparations",
+    "chapterTitle": "Walls Before Snow",
+    "currentBeat": "The town settles into careful readiness.",
+    "motifs": ["lantern light", "counted grain"]
+  },
+  "chronicleSummary": {
+    "latestEntry": "The council weighed timber, grain, and watch rotations before dusk.",
+    "openThreads": ["storage expansion", "winter stores"],
+    "recentEvents": ["the east wall was surveyed", "the fields remained calm"]
+  },
+  "factionTone": [
+    { "factionId": "council", "tone": "measured resolve", "stance": "steady" },
+    { "factionId": "villagers", "tone": "quiet optimism", "stance": "hopeful" }
+  ],
+  "speakerVoiceProfiles": [
+    {
+      "speakerId": "mayor-1",
+      "register": "formal",
+      "style": "measured",
+      "values": ["stability", "duty"],
+      "bannedPhrases": ["certain triumph"]
+    },
+    {
+      "speakerId": "narrator",
+      "register": "plain",
+      "style": "clear",
+      "values": ["accuracy"],
+      "bannedPhrases": ["miracle"]
+    }
+  ],
+  "canonGuardrails": {
+    "immutableFacts": [
+      "the execution layer remains authoritative",
+      "the embodiment layer is preview only"
+    ],
+    "prohibitedClaims": [
+      "the bot already executed the command",
+      "the LLM changed the town state"
+    ],
+    "requiredDisclaimers": [
+      "flavor text is advisory only"
+    ]
+  }
+}
