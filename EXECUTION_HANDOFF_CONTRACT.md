@@ -174,6 +174,43 @@ Rules:
 6. If accepted, attempt execution.
 7. Return `execution-result.v1`.
 
+## Local Harness
+
+This repo also provides a pure local harness for seam testing:
+
+- `createLocalExecutionState(overrides?)`
+- `normalizeLocalExecutionState(state)`
+- `executeLocalHandoff(handoff, state)`
+
+The local state object is JSON-friendly and deterministic:
+
+```json
+{
+  "snapshotHash": "<sha256>",
+  "decisionEpoch": 15,
+  "mission": null,
+  "sideQuests": [{ "id": "sq-gather-wood" }],
+  "projects": [{ "id": "wall-perimeter", "status": "active" }],
+  "supportedSalvageFocuses": ["dread", "general", "scarcity"],
+  "supportedTalkTypes": ["casual", "morale-boost"],
+  "processedResults": [
+    {
+      "idempotencyKey": "proposal_<sha256>",
+      "resultId": "result_<sha256>"
+    }
+  ]
+}
+```
+
+The harness evaluates in this order:
+1. validate handoff
+2. duplicate check via `processedResults`
+3. stale check via `snapshotHash` and `decisionEpoch`
+4. advisory precondition evaluation
+5. synthesize deterministic `execution-result.v1`
+
+The harness never executes the command. For successful execution simulation, it derives a replay-stable `postExecutionSnapshotHash` from the prior state and handoff contents.
+
 ## Intentionally Deferred
 
 - transport protocol between cognition and world engine
@@ -183,3 +220,4 @@ Rules:
 - partial execution semantics
 - rollback behavior
 - full post-state snapshot transport
+- realistic world mutation beyond a deterministic synthetic post-state hash

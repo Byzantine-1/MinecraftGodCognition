@@ -47,6 +47,23 @@ export {
   isValidExecutionResult
 } from './executionHandoff.js';
 export {
+  createLocalExecutionState,
+  executeLocalHandoff,
+  isValidLocalExecutionState,
+  normalizeLocalExecutionState
+} from './localExecutionHarness.js';
+export {
+  buildImmersionPrompt,
+  generateImmersion,
+  ImmersionArtifactType,
+  ImmersionStatus,
+  isValidDecisionInspectionPayload,
+  isValidImmersionInput,
+  isValidImmersionProvider,
+  resolveImmersionConfig,
+  resolveImmersionProvider
+} from './immersion.js';
+export {
   ProjectStatuses,
   SchemaVersion,
   SnapshotBounds

@@ -205,6 +205,43 @@ For adapter-only execution seams, use the documented `execution-handoff.v1` and 
 
 This keeps cognition advisory while giving the authoritative world engine a stable JSON boundary for dedupe, stale checks, precondition evaluation, and execution outcomes.
 
+For local seam testing, the repo also exports a synchronous local harness that consumes `execution-handoff.v1` and returns `execution-result.v1` without executing real commands.
+
+## Immersion Adapter
+
+The repo also exports an optional downstream immersion layer for flavor text generation.
+
+It only consumes stable structured artifacts:
+- `decision-inspection.v1`
+- `execution-handoff.v1`
+- `execution-result.v1`
+- optional lightweight `worldSummary`
+
+It never selects proposals, executes commands, or mutates state.
+
+Environment shape:
+
+```bash
+LLM_PROVIDER=qwen
+LLM_API_KEY=your-key
+LLM_BASE_URL=https://your-qwen-endpoint.example/v1
+LLM_MODEL=qwen-max
+```
+
+Public surface:
+- `buildImmersionPrompt(input)`
+- `generateImmersion(input, options?)`
+- `resolveImmersionConfig(env?)`
+- `resolveImmersionProvider(env?)`
+
+Artifact types:
+- `leader-speech`
+- `town-rumor`
+- `chronicle-entry`
+- `outcome-blurb`
+
+When the provider is missing or fails, the adapter degrades gracefully with deterministic fallback text by default.
+
 ## Tests
 
 Run:
