@@ -1,188 +1,187 @@
 # minecraft-agent-cognition
 
-A minimal, deterministic proposal-only cognition layer for world-core governance.
+A deterministic proposal-only cognition layer for Minecraft town governance.
 
-## What This Is
+## What It Does
 
-This module reads a **bounded world snapshot** and emits **one typed governance action proposal**. It is a cognition MVP that answers: "What should a governor do right now?"
+This module accepts:
+- a strict bounded snapshot (`snapshot.v1`)
+- a strict governor profile (`profile.v1`)
 
-## What This Is NOT
+It returns exactly one strict proposal envelope (`proposal.v2`).
 
-- ❌ A survival bot brain (no Minecraft entity state)
-- ❌ An orchestrator or state machine
-- ❌ An embodiment layer (doesn't perform actions)
-- ❌ LLM-integrated (pure deterministic heuristics)
-- ❌ Network-connected
+The current system is a library, not a runtime service. It validates inputs, scores a small fixed set of heuristic actions, and emits a proposal that can be mapped to a world-core command string.
 
-## Core Concept
+## Current Runtime Path
 
-**Input:** Bounded world-core snapshot (day, mission, pressure, projects)  
-**Processing:** Role-based governance heuristics  
-**Output:** One typed proposal with priority and rationale
+1. `propose(snapshot, profile, memory?)`
+2. `isValidSnapshot(snapshot)` and `isValidProfile(profile)`
+3. `evaluateGovernanceProposal(snapshot, profile, memory)`
+4. proposal envelope construction
+5. `isValidProposal(proposal)`
+6. optional `proposalToCommand(proposal)`
 
-## Proposal Types
+## Versioned Schemas
 
-- `MAYOR_ACCEPT_MISSION` - Accept available mission
-- `PROJECT_ADVANCE` - Push active project forward
-- `SALVAGE_PLAN` - Respond to resource crisis
-- `TOWNSFOLK_TALK` - Morale/community action
+### Snapshot Schema: `snapshot.v1`
 
-Each proposal includes:
-- `type` - Governance action type
-- `actorId` - Executor (governor role)
-- `townId` - Town identifier
-- `priority` - [0, 1] urgency
-- `reason` - Human-readable rationale
-- `reasonTags` - Array of machine-readable rationale tags (e.g. `no_active_mission`, `high_threat`)
-- `args` - Type-specific parameters
-
-## Governor Roles
-
-### Mayor
-- **Goal:** Accept missions and grow the town
-- **Heuristic:** If no active mission → propose `MAYOR_ACCEPT_MISSION`
-- **Traits:** authority, pragmatism
-
-### Captain
-- **Goal:** Defend against threats via projects
-- **Heuristic:** If threat > 0.3 and projects exist → propose `PROJECT_ADVANCE`
-- **Traits:** courage
-
-### Warden
-- **Goal:** Reduce scarcity and dread
-- **Heuristic:** If (scarcity + dread) / 2 > 0.4 → propose `SALVAGE_PLAN`
-- **Traits:** pragmatism, prudence
-
-## Snapshot Structure
-
-```javascript
+```js
 {
-  day: 0,                           // In-game day
-  townId: 'town-1',                 // Settlement ID
-  mission: { id, title },           // Active mission or null
-  sideQuests: [],                   // Available quests (bounded)
-  pressure: {                       // Ambient stressors [0, 1]
-    threat,                         // External danger
-    scarcity,                       // Resource shortage
-    hope,                           // Morale level
-    dread                           // Despair level
+  schemaVersion: 'snapshot.v1',
+  day: 0,
+  townId: 'town-1',
+  mission: null,
+  sideQuests: [
+    { id: 'sq-gather-wood', title: 'Gather Wood', complexity: 1 }
+  ],
+  pressure: {
+    threat: 0.2,
+    scarcity: 0.3,
+    hope: 0.8,
+    dread: 0.1
   },
-  projects: [],                     // Active governance projects (bounded)
-  latestNetherEvent: null           // Optional recent Nether event
+  projects: [
+    { id: 'farm', name: 'Expand Farm', progress: 0.2, status: 'active' }
+  ],
+  latestNetherEvent: null
 }
 ```
 
+Validation rules:
+- `day` must be an integer `>= 0`
+- `sideQuests.length <= 100`
+- `projects.length <= 100`
+- `pressure.*` must be finite numbers in `[0, 1]`
+- `mission` must be `null` or include non-empty `id` and `title`
+- `projects[*].status` must be one of `planning | active | blocked | complete`
+- `latestNetherEvent` must be `string | null`
+
+### Profile Schema: `profile.v1`
+
+```js
+{
+  schemaVersion: 'profile.v1',
+  id: 'mayor-1',
+  role: 'mayor',
+  townId: 'town-1',
+  traits: {
+    authority: 0.9,
+    pragmatism: 0.8,
+    courage: 0.6,
+    prudence: 0.7
+  },
+  goals: {
+    acceptMissions: true,
+    growTown: true,
+    maintainMorale: true
+  }
+}
+```
+
+Validation rules:
+- `role` must be one of `mayor | captain | warden`
+- every trait must be a finite number in `[0, 1]`
+- `goals` must be a non-empty object of boolean flags
+- `profile.townId` must match `snapshot.townId` for `propose()`
+
+### Proposal Envelope: `proposal.v2`
+
+```js
+{
+  schemaVersion: 'proposal.v2',
+  proposalId: 'proposal_<sha256>',
+  snapshotHash: '<sha256>',
+  decisionEpoch: 5,
+  preconditions: [
+    { kind: 'mission_absent' },
+    { kind: 'side_quest_exists', targetId: 'sq-gather-wood' }
+  ],
+  type: 'MAYOR_ACCEPT_MISSION',
+  actorId: 'mayor-1',
+  townId: 'town-1',
+  priority: 0.72,
+  reason: 'No active mission. Authority level 90% ready to accept.',
+  reasonTags: ['no_active_mission'],
+  args: { missionId: 'sq-gather-wood' }
+}
+```
+
+Envelope semantics:
+- `proposalId` is a deterministic SHA-256 hash of `actorId`, `townId`, `type`, `args`, `priority`, `decisionEpoch`, and `snapshotHash`
+- `snapshotHash` is a deterministic SHA-256 hash of the validated snapshot value
+- `decisionEpoch` is currently `snapshot.day`
+- `preconditions` are optional execution guards for downstream consumers
+
+Strict arg rules:
+- `MAYOR_ACCEPT_MISSION` -> `{ missionId: string }`
+- `PROJECT_ADVANCE` -> `{ projectId: string }`
+- `SALVAGE_PLAN` -> `{ focus: 'scarcity' | 'dread' | 'general' }`
+- `TOWNSFOLK_TALK` -> `{ talkType: 'morale-boost' | 'casual' }`
+
+Malformed args are rejected. Command mapping does not normalize invalid values into `null`.
+
+## Current Heuristics
+
+### Mayor
+- Emits `MAYOR_ACCEPT_MISSION` only when there is no active mission and at least one side quest.
+- Chooses the lexicographically lowest side quest id.
+
+### Captain
+- Emits `PROJECT_ADVANCE` when `pressure.threat > 0.3` and at least one project exists.
+- Chooses the lexicographically lowest project id.
+
+### Warden
+- Emits `SALVAGE_PLAN` when `(scarcity + dread) / 2 > 0.4`.
+- Chooses `focus = 'scarcity'` when scarcity is greater than or equal to dread, otherwise `focus = 'dread'`.
+
+### Fallback
+- Emits `TOWNSFOLK_TALK`.
+- Uses `talkType = 'morale-boost'` when `hope < 0.6`, otherwise `talkType = 'casual'`.
+
 ## Determinism
 
-**Same input → same output always.**
-
-Input validation is strict (`isValidSnapshot`, `isValidProfile`), and invalid shapes raise errors rather than failing silently. A small, bounded memory object may be passed to `propose()` (`{lastType, lastTarget, repeatCount}`) which enforces a deterministic repetition penalty but does not affect overall determinism.
-
-No timestamps, randomness, or external state. All heuristics are pure functions.
+The current contract is deterministic under these rules:
+- object key order does not affect `snapshotHash` or `proposalId`
+- array order is preserved and therefore semantically significant in hashing
+- no randomness, timestamps, or external IO affect scoring
+- the anti-repeat memory penalty is deterministic for the same memory input
 
 ## Usage
 
-```javascript
+```js
 import { propose } from './src/propose.js';
 import { createDefaultSnapshot } from './src/snapshotSchema.js';
 import { mayorProfile } from './src/agentProfiles.js';
+import { proposalToCommand } from './src/proposalMapping.js';
 
 const snapshot = createDefaultSnapshot('town-1', 5);
-snapshot.mission = null;
+snapshot.sideQuests = [{ id: 'sq-gather-wood', title: 'Gather Wood', complexity: 1 }];
 snapshot.pressure = { threat: 0.2, scarcity: 0.3, hope: 0.7, dread: 0.1 };
 
 const proposal = propose(snapshot, mayorProfile);
-console.log(proposal);
-// Output:
-// {
-//   type: 'MAYOR_ACCEPT_MISSION',
-//   actorId: 'mayor-1',
-//   townId: 'town-1',
-//   priority: 0.72,
-//   reason: '...',
-//   args: { ... }
-// }
+const command = proposalToCommand(proposal);
+
+console.log(proposal.schemaVersion);
+console.log(proposal.proposalId);
+console.log(proposal.snapshotHash);
+console.log(command);
 ```
 
-## Running Tests
+## Tests
+
+Run:
 
 ```bash
 npm test
 ```
 
-All tests verify:
-- Proposal DSL shape validation
-- Deterministic behavior
-- Role-specific heuristics
-- Fallback proposals
-- Edge cases
-
-## Project Structure
-
-```
-src/
-  index.js              # Module exports
-  proposalDsl.js        # World-core proposal types
-  snapshotSchema.js     # Bounded snapshot validator
-  agentProfiles.js      # Governor role definitions
-  heuristics.js         # Role-based decision logic
-  propose.js            # Proposal generation
-
-test/
-  fixtures/             # sample snapshot JSON used by integration tests
-    sampleSnapshot.json
-  propose.test.js       # Proposal tests (validation, tie-break, memory, fixtures)
-  heuristics.test.js    # Heuristics tests
-```
+The suite currently verifies:
+- strict schema validation for snapshot, profile, and proposal
+- deterministic envelope metadata
+- negative cases for malformed args and mismatched `townId`
+- proposal-to-command mapping only for valid envelopes
 
 ## Documentation
 
-- [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md) – How to connect cognition to world-core
-- [**WORLD_CORE_CONTRACT.md**](WORLD_CORE_CONTRACT.md) – Snapshot schema and command format
-
-
-
-Proposals are mapped to world-core commands for execution (not automated):
-
-```javascript
-import { proposalToCommand, proposalToDescription } from './src/proposalMapping.js';
-
-const proposal = propose(snapshot, mayorProfile);
-const command = proposalToCommand(proposal);
-const description = proposalToDescription(proposal);
-
-console.log(description);
-// Output: MAYOR_ACCEPT_MISSION: No active mission. Authority level 90% ready to accept. [no_active_mission]
-
-console.log(command);
-// Output: mission accept town-1 sq-gather-wood
-```
-
-## World-Core Integration Seam
-
-See [WORLD_CORE_CONTRACT.md](WORLD_CORE_CONTRACT.md) for the full snapshot schema and integration guide.
-
-**In world-core**, add a read-only command:
-
-```bash
-god snapshot <townId> --json
-```
-
-This exports a bounded snapshot matching the cognition contract. The seam is:
-
-- **Read-only**: World-core exports only
-- **Deterministic**: Same state → same snapshot
-- **Bounded**: Fixed schema, no unbounded lists
-- **Contract-driven**: Schema version v1 is stable
-
-
-This is a foundation for:
-- Integration with a live world state provider
-- LLM-powered reason generation
-- Multi-actor coordination
-- Event-driven replanning
-
-The current output schema (proposal contract v1) is intentionally minimal and additive; downstream consumers should expect `reasonTags` alongside existing fields and may ignore unknown `args`. This contract will remain stable until v2.
-
-But NOT yet.
-
+- [WORLD_CORE_CONTRACT.md](WORLD_CORE_CONTRACT.md)
+- [PROPOSAL_REFERENCE.md](PROPOSAL_REFERENCE.md)

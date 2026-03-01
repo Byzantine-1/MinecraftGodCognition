@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "snapshot.v1",
   "day": 42,
   "townId": "town-1",
   "mission": null,

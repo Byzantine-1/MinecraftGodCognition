@@ -29,7 +29,8 @@ describe('Governance Heuristics', () => {
     
     it('should return positive score when no mission and traits are high', () => {
       const snapshot = {
-        mission: null
+        mission: null,
+        sideQuests: [{ id: 'sq-1', title: 'Quest 1' }]
       };
       const profile = {
         traits: { authority: 0.9, pragmatism: 0.8 }
@@ -42,7 +43,7 @@ describe('Governance Heuristics', () => {
     });
     
     it('should scale with authority and pragmatism traits', () => {
-      const snapshot = { mission: null };
+      const snapshot = { mission: null, sideQuests: [{ id: 'sq-1', title: 'Quest 1' }] };
       
       const authoritative = { traits: { authority: 0.9, pragmatism: 0.7 } };
       const timid = { traits: { authority: 0.2, pragmatism: 0.3 } };
@@ -51,6 +52,16 @@ describe('Governance Heuristics', () => {
       const timidScore = evaluateMissionAcceptance(snapshot, timid).score;
       
       assert(authScore > timidScore);
+    });
+
+    it('should return zero when no mission is active but no side quests exist', () => {
+      const snapshot = { mission: null, sideQuests: [] };
+      const profile = {
+        traits: { authority: 0.9, pragmatism: 0.8 }
+      };
+
+      const res = evaluateMissionAcceptance(snapshot, profile);
+      assert.strictEqual(res.score, 0);
     });
   });
   
@@ -157,6 +168,7 @@ describe('Governance Heuristics', () => {
     it('should return a proposal object with required fields', () => {
       const snapshot = {
         mission: null,
+        sideQuests: [{ id: 'sq-1', title: 'Quest 1' }],
         pressure: { threat: 0.2, scarcity: 0.2, hope: 0.7, dread: 0.1 },
         projects: []
       };
@@ -175,6 +187,7 @@ describe('Governance Heuristics', () => {
     it('should propose MAYOR_ACCEPT_MISSION for mayor when no mission', () => {
       const snapshot = {
         mission: null,
+        sideQuests: [{ id: 'sq-1', title: 'Quest 1' }],
         pressure: { threat: 0.2, scarcity: 0.2, hope: 0.7, dread: 0.1 },
         projects: []
       };
@@ -234,7 +247,7 @@ describe('Governance Heuristics', () => {
     });
 
     it('should penalize repeated type in memory', () => {
-      const snapshot = { mission: null, sideQuests: [], pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
+      const snapshot = { mission: null, sideQuests: [{ id: 'sq-1', title: 'Quest 1' }], pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
       const profile = { role: 'mayor', traits: { authority: 0.5, pragmatism: 1, courage: 0, prudence: 0 } };
       const base = evaluateGovernanceProposal(snapshot, profile);
       // Pass memory matching the proposal we got
@@ -245,7 +258,7 @@ describe('Governance Heuristics', () => {
     });
 
     it('should respect tie-breaker ordering when priorities equal', () => {
-      const snapshot = { mission: null, pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
+      const snapshot = { mission: null, sideQuests: [{ id: 'sq-1', title: 'Quest 1' }], pressure: { threat: 0, scarcity: 0, hope: 0.5, dread: 0 }, projects: [] };
       const profile = { role: 'mayor', traits: { authority: 0.5, pragmatism: 1, courage: 0, prudence: 0 } };
       // mission and talk both score 0.5
       const result = evaluateGovernanceProposal(snapshot, profile);

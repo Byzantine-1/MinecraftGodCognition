@@ -8,6 +8,7 @@ import { propose } from '../src/propose.js';
 import { createDefaultSnapshot, isValidSnapshot } from '../src/snapshotSchema.js';
 import { mayorProfile, captainProfile, wardenProfile, isValidProfile } from '../src/agentProfiles.js';
 import { ProposalType } from '../src/proposalDsl.js';
+import { SchemaVersion } from '../src/schemaVersions.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -24,6 +25,10 @@ describe('Propose - World-Core Cognition', () => {
       assert(typeof proposal.priority === 'number');
       assert(proposal.priority >= 0 && proposal.priority <= 1);
       assert(proposal.reason);
+      assert.strictEqual(proposal.schemaVersion, SchemaVersion.PROPOSAL);
+      assert(/^proposal_[0-9a-f]{64}$/.test(proposal.proposalId));
+      assert(/^[0-9a-f]{64}$/.test(proposal.snapshotHash));
+      assert.strictEqual(proposal.decisionEpoch, snapshot.day);
     });
     
     it('should validate proposal shape before returning', () => {
@@ -68,6 +73,16 @@ describe('Propose - World-Core Cognition', () => {
         /Invalid profile structure/
       );
     });
+
+    it('should reject snapshot/profile town mismatches', () => {
+      const snapshot = createDefaultSnapshot('town-a', 0);
+      const mismatchedProfile = { ...mayorProfile, townId: 'town-b' };
+
+      assert.throws(
+        () => propose(snapshot, mismatchedProfile),
+        /townId mismatch/
+      );
+    });
     
     it('should produce deterministic output for same input', () => {
       const snapshot = createDefaultSnapshot('town-1', 5);
@@ -96,6 +111,7 @@ describe('Propose - World-Core Cognition', () => {
       assert.strictEqual(proposal.args.missionId, 'sq-1');
       assert(Array.isArray(proposal.reasonTags));
       assert(proposal.reasonTags.includes('no_active_mission'));
+      assert(Array.isArray(proposal.preconditions));
     });
 
     it('should not propose MAYOR_ACCEPT_MISSION when mission is already active', () => {
@@ -104,6 +120,15 @@ describe('Propose - World-Core Cognition', () => {
       
       const proposal = propose(snapshot, mayorProfile);
       assert.notStrictEqual(proposal.type, ProposalType.MAYOR_ACCEPT_MISSION);
+    });
+
+    it('should fall back when no mission is active but no side quests exist', () => {
+      const snapshot = createDefaultSnapshot('town-1', 0);
+      snapshot.mission = null;
+      snapshot.sideQuests = [];
+
+      const proposal = propose(snapshot, mayorProfile);
+      assert.strictEqual(proposal.type, ProposalType.TOWNSFOLK_TALK);
     });
 
     it('should break ties by type order when scores equal', () => {
@@ -120,6 +145,7 @@ describe('Propose - World-Core Cognition', () => {
     it('should apply memory penalty to repeated proposals', () => {
       const snapshot = createDefaultSnapshot('town-1', 0);
       snapshot.mission = null;
+      snapshot.sideQuests = [{ id: 'sq-1', title: 'Gather wood', complexity: 1 }];
       const mem = { lastType: ProposalType.MAYOR_ACCEPT_MISSION, repeatCount: 2 };
       const p1 = propose(snapshot, mayorProfile, mem);
       // priority should be lower due to penalty

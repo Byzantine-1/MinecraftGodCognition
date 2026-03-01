@@ -2,6 +2,8 @@
  * Agent Profiles - Governance role definitions for world-core cognition
  */
 
+import { SchemaVersion } from './schemaVersions.js';
+
 export const Roles = {
   MAYOR: 'mayor',
   CAPTAIN: 'captain',
@@ -17,6 +19,7 @@ export const Traits = {
 
 /**
  * @typedef {Object} GovernanceProfile
+ * @property {string} schemaVersion - Profile schema version
  * @property {string} id - Actor/townsfolk identifier
  * @property {string} role - Role from Roles enum
  * @property {string} townId - Town/settlement identifier
@@ -25,6 +28,7 @@ export const Traits = {
  */
 
 export const mayorProfile = {
+  schemaVersion: SchemaVersion.PROFILE,
   id: 'mayor-1',
   role: Roles.MAYOR,
   townId: 'town-1',
@@ -42,6 +46,7 @@ export const mayorProfile = {
 };
 
 export const captainProfile = {
+  schemaVersion: SchemaVersion.PROFILE,
   id: 'captain-1',
   role: Roles.CAPTAIN,
   townId: 'town-1',
@@ -59,6 +64,7 @@ export const captainProfile = {
 };
 
 export const wardenProfile = {
+  schemaVersion: SchemaVersion.PROFILE,
   id: 'warden-1',
   role: Roles.WARDEN,
   townId: 'town-1',
@@ -82,17 +88,23 @@ export const wardenProfile = {
  */
 export function isValidProfile(profile) {
   if (!profile || typeof profile !== 'object') return false;
+  if (profile.schemaVersion !== SchemaVersion.PROFILE) return false;
   if (typeof profile.id !== 'string' || profile.id.length === 0) return false;
   if (!Object.values(Roles).includes(profile.role)) return false;
   if (typeof profile.townId !== 'string' || profile.townId.length === 0) return false;
-  
+
   if (!profile.traits || typeof profile.traits !== 'object') return false;
   for (const [traitName, traitDef] of Object.entries(Traits)) {
     const value = profile.traits[traitName];
-    if (typeof value !== 'number' || value < traitDef.min || value > traitDef.max) return false;
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < traitDef.min || value > traitDef.max) return false;
   }
-  
+
   if (!profile.goals || typeof profile.goals !== 'object') return false;
-  
+  const goalEntries = Object.entries(profile.goals);
+  if (goalEntries.length === 0) return false;
+  for (const [, enabled] of goalEntries) {
+    if (typeof enabled !== 'boolean') return false;
+  }
+
   return true;
 }

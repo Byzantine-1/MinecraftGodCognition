@@ -14,7 +14,8 @@ import { propose } from '../src/propose.js';
 import { isValidSnapshot } from '../src/snapshotSchema.js';
 import { isValidProposal, ProposalType } from '../src/proposalDsl.js';
 import { proposalToCommand, proposalToDescription } from '../src/proposalMapping.js';
-import { mayorProfile, captainProfile, wardenProfile, Roles } from '../src/agentProfiles.js';
+import { mayorProfile, captainProfile, wardenProfile } from '../src/agentProfiles.js';
+import { SchemaVersion } from '../src/schemaVersions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +28,10 @@ function loadSnapshot(filename) {
   return JSON.parse(data);
 }
 
+function profileForSnapshot(profile, snapshot) {
+  return { ...profile, townId: snapshot.townId };
+}
+
 /**
  * Verify a complete proposal cycle
  */
@@ -35,10 +40,14 @@ function verifyProposalCycle(snapshot, profile, expectedRoleAffinity = true) {
   assert(isValidSnapshot(snapshot), 'Snapshot must be valid');
 
   // 2. Generate proposal
-  const proposal = propose(snapshot, profile);
+  const proposal = propose(snapshot, profileForSnapshot(profile, snapshot));
 
   // 3. Validate proposal
   assert(isValidProposal(proposal), 'Proposal must be valid');
+  assert.strictEqual(proposal.schemaVersion, SchemaVersion.PROPOSAL, 'Proposal schema version must match');
+  assert(/^proposal_[0-9a-f]{64}$/.test(proposal.proposalId), 'Proposal ID must be deterministic hash');
+  assert(/^[0-9a-f]{64}$/.test(proposal.snapshotHash), 'Snapshot hash must be deterministic hash');
+  assert.strictEqual(proposal.decisionEpoch, snapshot.day, 'Decision epoch must track snapshot day');
   assert(proposal.type, 'Proposal must have type');
   assert(proposal.priority >= 0 && proposal.priority <= 1, 'Priority must be [0, 1]');
   assert(Array.isArray(proposal.reasonTags), 'Reason tags must be array');
@@ -102,15 +111,15 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
     });
 
     it('should verify determinism: same snapshot + profile = same proposal', () => {
-      const p1 = propose(snapshot, mayorProfile);
-      const p2 = propose(snapshot, mayorProfile);
+      const p1 = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
+      const p2 = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
       assert.strictEqual(p1.type, p2.type);
       assert.strictEqual(p1.priority, p2.priority);
       assert.deepStrictEqual(p1.args, p2.args);
     });
 
     it('should verify command determinism: same proposal = same command', () => {
-      const proposal = propose(snapshot, mayorProfile);
+      const proposal = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
       const cmd1 = proposalToCommand(proposal);
       const cmd2 = proposalToCommand(proposal);
       assert.strictEqual(cmd1, cmd2);
@@ -162,9 +171,9 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
     });
 
     it('should verify threat-driven role differentiation', () => {
-      const mayor = propose(snapshot, mayorProfile);
-      const captain = propose(snapshot, captainProfile);
-      const warden = propose(snapshot, wardenProfile);
+      const mayor = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
+      const captain = propose(snapshot, profileForSnapshot(captainProfile, snapshot));
+      const warden = propose(snapshot, profileForSnapshot(wardenProfile, snapshot));
 
       // Captain should be threat-aware
       if (captain.type === ProposalType.PROJECT_ADVANCE) {
@@ -220,7 +229,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
     });
 
     it('should verify despair-driven proposals', () => {
-      const proposal = propose(snapshot, wardenProfile);
+      const proposal = propose(snapshot, profileForSnapshot(wardenProfile, snapshot));
       // In crisis, warden should respond
       assert(proposal.reasonTags.length > 0, 'Should have reason tags in crisis');
     });
@@ -242,7 +251,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
     it('should map all proposals from all scenarios to valid commands', () => {
       snapshots.forEach(({ name, data }) => {
         profiles.forEach(({ name: roleName, profile }) => {
-          const proposal = propose(data, profile);
+          const proposal = propose(data, profileForSnapshot(profile, data));
           const command = proposalToCommand(proposal);
 
           assert(typeof command === 'string', `${name}/${roleName}: command should be string`);
@@ -258,7 +267,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
       // All commands should follow: <verb> <noun> <townId> <target>
       snapshots.forEach(({ data }) => {
         profiles.forEach(({ profile }) => {
-          const proposal = propose(data, profile);
+          const proposal = propose(data, profileForSnapshot(profile, data));
           const command = proposalToCommand(proposal);
           const parts = command.split(' ');
 
@@ -272,7 +281,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
   describe('Human-in-the-Loop Cycle Validation', () => {
     it('cycle 1: stable → proposal → command → ready for execution', () => {
       const snapshot = loadSnapshot('stableSnapshot.json');
-      const proposal = propose(snapshot, mayorProfile);
+      const proposal = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
       const command = proposalToCommand(proposal);
       const description = proposalToDescription(proposal);
 
@@ -287,9 +296,9 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
     it('cycle 2: threatened → multi-role proposals → all valid', () => {
       const snapshot = loadSnapshot('threatenedSnapshot.json');
       const proposals = [
-        { role: 'mayor', proposal: propose(snapshot, mayorProfile) },
-        { role: 'captain', proposal: propose(snapshot, captainProfile) },
-        { role: 'warden', proposal: propose(snapshot, wardenProfile) }
+        { role: 'mayor', proposal: propose(snapshot, profileForSnapshot(mayorProfile, snapshot)) },
+        { role: 'captain', proposal: propose(snapshot, profileForSnapshot(captainProfile, snapshot)) },
+        { role: 'warden', proposal: propose(snapshot, profileForSnapshot(wardenProfile, snapshot)) }
       ];
 
       proposals.forEach(({ role, proposal }) => {
@@ -301,7 +310,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
 
     it('cycle 3: crisis → urgent proposals with tags', () => {
       const snapshot = loadSnapshot('resourceCrisisSnapshot.json');
-      const proposal = propose(snapshot, wardenProfile);
+      const proposal = propose(snapshot, profileForSnapshot(wardenProfile, snapshot));
 
       assert(isValidProposal(proposal));
       assert(proposal.reasonTags.length > 0, 'Crisis proposal should have tags');
@@ -329,13 +338,17 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
 
     it('should detect if proposal violates expected schema', () => {
       const badProposal = {
+        schemaVersion: SchemaVersion.PROPOSAL,
+        proposalId: `proposal_${'e'.repeat(64)}`,
+        snapshotHash: 'f'.repeat(64),
+        decisionEpoch: 1,
         type: ProposalType.MAYOR_ACCEPT_MISSION,
         actorId: 'test',
         townId: 'test',
         priority: 1.5, // Invalid: > 1
         reason: 'test',
         reasonTags: [],
-        args: {}
+        args: { missionId: 'mission-1' }
       };
 
       assert(!isValidProposal(badProposal), 'Should reject priority > 1');
@@ -349,7 +362,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
       ];
 
       snapshots.forEach(snapshot => {
-        const proposal = propose(snapshot, mayorProfile);
+        const proposal = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
         proposal.reasonTags.forEach(tag => {
           assert(typeof tag === 'string', `Tag should be string: ${tag}`);
         });
@@ -358,7 +371,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
 
     it('should ensure args match proposal type expectations', () => {
       const snapshot = loadSnapshot('threatenedSnapshot.json');
-      const proposal = propose(snapshot, captainProfile);
+      const proposal = propose(snapshot, profileForSnapshot(captainProfile, snapshot));
 
       if (proposal.type === ProposalType.PROJECT_ADVANCE) {
         assert(proposal.args.projectId, 'PROJECT_ADVANCE should have projectId');
@@ -375,7 +388,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
       assert(snapshot.projects.length <= 100, 'Projects should be bounded');
 
       // Should still generate valid proposals
-      const proposal = propose(snapshot, captainProfile);
+      const proposal = propose(snapshot, profileForSnapshot(captainProfile, snapshot));
       assert(isValidProposal(proposal));
     });
 
@@ -384,7 +397,7 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
       assert(snapshot.sideQuests.length <= 100, 'Quests should be bounded');
 
       // Should still generate valid proposals
-      const proposal = propose(snapshot, mayorProfile);
+      const proposal = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
       assert(isValidProposal(proposal));
     });
 
@@ -396,9 +409,9 @@ describe('Full Loop Validation - World-Core → Cognition → Command', () => {
       ];
 
       snapshots.forEach(snapshot => {
-        const p1 = propose(snapshot, mayorProfile);
-        const p2 = propose(snapshot, captainProfile);
-        const p3 = propose(snapshot, wardenProfile);
+        const p1 = propose(snapshot, profileForSnapshot(mayorProfile, snapshot));
+        const p2 = propose(snapshot, profileForSnapshot(captainProfile, snapshot));
+        const p3 = propose(snapshot, profileForSnapshot(wardenProfile, snapshot));
 
         assert(p1, 'Mayor should emit proposal');
         assert(p2, 'Captain should emit proposal');

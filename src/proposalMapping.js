@@ -7,7 +7,7 @@
  * No execution, no world mutation—just the mapping interface.
  */
 
-import { ProposalType } from './proposalDsl.js';
+import { isValidProposal, ProposalType } from './proposalDsl.js';
 
 /**
  * Map a proposal to a world-core command string
@@ -15,31 +15,31 @@ import { ProposalType } from './proposalDsl.js';
  * @returns {string} World-core command (not executed)
  */
 export function proposalToCommand(proposal) {
-  if (!proposal || !proposal.type) {
-    throw new Error('Invalid proposal: missing type');
+  if (!isValidProposal(proposal)) {
+    throw new Error('Invalid proposal envelope');
   }
 
-  const { type, actorId, townId, args, reason } = proposal;
+  const { type, townId, args } = proposal;
 
   switch (type) {
     case ProposalType.MAYOR_ACCEPT_MISSION:
       // Command: accept mission
-      const missionId = args?.missionId || null;
+      const missionId = args.missionId;
       return `mission accept ${townId} ${missionId}`;
 
     case ProposalType.PROJECT_ADVANCE:
       // Command: advance project
-      const projectId = args?.projectId || null;
+      const projectId = args.projectId;
       return `project advance ${townId} ${projectId}`;
 
     case ProposalType.SALVAGE_PLAN:
       // Command: initiate salvage
-      const focus = args?.focus || 'general';
+      const focus = args.focus;
       return `salvage initiate ${townId} ${focus}`;
 
     case ProposalType.TOWNSFOLK_TALK:
       // Command: talk to townsfolk
-      const talkType = args?.talkType || 'morale-boost';
+      const talkType = args.talkType;
       return `townsfolk talk ${townId} ${talkType}`;
 
     default:

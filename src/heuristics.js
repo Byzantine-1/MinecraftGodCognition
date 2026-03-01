@@ -14,11 +14,13 @@ import { ProposalType } from './proposalDsl.js';
 export function evaluateMissionAcceptance(snapshot, profile) {
   const { mission, sideQuests } = snapshot;
   const { authority, pragmatism } = profile.traits;
-  
-  // Mayor accepts mission if none active
-  if (!mission) {
+
+  // Mayor accepts mission if none active and a quest is available to accept.
+  if (!mission && sideQuests && sideQuests.length > 0) {
     const score = authority * pragmatism;
-    const targetId = sideQuests && sideQuests.length > 0 ? sideQuests[0].id : null;
+    const targetId = sideQuests
+      .map(quest => quest.id)
+      .sort()[0];
     return { score, reasonTags: ['no_active_mission'], targetId };
   }
   

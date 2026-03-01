@@ -1,226 +1,299 @@
-# World-Core Snapshot Contract v1
+# World-Core Contract
 
-## Overview
+This document defines the strict integration seam between `world-core` and `minecraft-agent-cognition`.
 
-This document specifies how `world-core` should export bounded snapshots for consumption by `minecraft-agent-cognition`. The seam is:
+## Contract Surface
 
-- **Read-only**: World-core exports only, no imports from cognition
-- **Deterministic**: Same world state always produces same snapshot
-- **Bounded**: Fixed schema, no unbounded lists or nested structures
-- **Serializable**: Valid JSON, no circular references
+`world-core` provides:
+- a read-only snapshot in `snapshot.v1`
 
-## Command in World-Core
+`minecraft-agent-cognition` provides:
+- a deterministic proposal envelope in `proposal.v2`
+- an optional command string derived from a valid proposal envelope
+
+## World-Core Snapshot Schema: `snapshot.v1`
+
+### Command Shape
 
 ```bash
 god snapshot <townId> --json
 ```
 
-Outputs a JSON snapshot matching the schema below. Use this in tests and integration.
-
-## Snapshot Schema v1
+### JSON Shape
 
 ```json
 {
-  "day": <number>,
-  "townId": "<string>",
-  "mission": <Mission | null>,
-  "sideQuests": [<SideQuest>, ...],
-  "pressure": <Pressure>,
-  "projects": [<Project>, ...],
-  "latestNetherEvent": "<string | null>"
-}
-```
-
-### Mission
-
-```json
-{
-  "id": "<string>",
-  "title": "<string>",
-  "description": "<string (optional)>",
-  "reward": "<number (optional)>"
-}
-```
-
-- `id`: Unique mission identifier
-- `title`: Human-readable mission name
-- `description`, `reward`: Optional metadata
-
-**Null if no active mission.**
-
-### SideQuest
-
-```json
-{
-  "id": "<string>",
-  "title": "<string>",
-  "complexity": <number (optional, 0-10)>
-}
-```
-
-- `id`: Quest identifier
-- `title`: Quest name
-- `complexity`: Estimated difficulty (optional)
-
-### Pressure
-
-```json
-{
-  "threat": <number>,      // [0, 1]
-  "scarcity": <number>,    // [0, 1]
-  "hope": <number>,        // [0, 1]
-  "dread": <number>        // [0, 1]
-}
-```
-
-All values must be in [0, 1]. Describes ambient world conditions:
-
-- **threat**: External danger level (mobs, raids, disasters)
-- **scarcity**: Resource shortage (hunger, material depletion)
-- **hope**: Community morale (1 = optimistic, 0 = despair)
-- **dread**: Despair/fear (counterpoint to hope, different axis)
-
-### Project
-
-```json
-{
-  "id": "<string>",
-  "name": "<string>",
-  "progress": <number>,    // [0, 1]
-  "status": "<string>"     // "planning" | "active" | "blocked" | "complete"
-}
-```
-
-- `id`: Project identifier (used for targeting in proposals)
-- `name`: Human-readable project name
-- `progress`: Completion ratio [0, 1]
-- `status`: Current phase
-
-### latestNetherEvent
-
-Optional string describing recent Nether/world event:
-
-```json
-"latestNetherEvent": "piglin_raid_nearby"
-```
-
-Or null if no recent event.
-
-## Constraints
-
-### For World-Core Implementers
-
-1. **No cognition import**: World-core must not import from cognition module
-2. **Bounded lists**: Keep `sideQuests` and `projects` to < 100 items each
-3. **Determinism**: Same world state → same JSON output (no random fields, no timestamps)
-4. **Snapshot size**: Keep total JSON < 10 KB for performance
-5. **Read-only**: Snapshot export is query-only, no side-effects
-
-### For Cognition
-
-- Always validate with `isValidSnapshot(snapshot)`
-- Never mutate world-core through snapshot data
-- Treat snapshot as a single moment in time (bounded to this turn/tick)
-- Always emit one proposal per `propose()` call
-
-## Example: Early Game
-
-```json
-{
+  "schemaVersion": "snapshot.v1",
   "day": 0,
   "townId": "town-1",
   "mission": null,
-  "sideQuests": [
-    {"id": "sq-gather-wood", "title": "Gather Wood", "complexity": 1}
-  ],
+  "sideQuests": [],
   "pressure": {
     "threat": 0.2,
     "scarcity": 0.3,
     "hope": 0.8,
     "dread": 0.1
   },
-  "projects": [
-    {"id": "farm", "name": "Expand Farm", "progress": 0.2, "status": "active"}
-  ],
+  "projects": [],
   "latestNetherEvent": null
 }
 ```
 
-**Expected cognition response:**
-- Mayor proposes accepting the side-quest
-- Captain proposes advancing the farm project
-- Warden proposes casual morale talk
+### Required Field Rules
 
-## Example: Crisis
+#### `schemaVersion`
+- must equal `"snapshot.v1"`
+
+#### `day`
+- integer
+- `>= 0`
+
+#### `townId`
+- non-empty string
+
+#### `mission`
+- `null`, or:
 
 ```json
 {
-  "day": 42,
-  "townId": "town-1",
-  "mission": {
-    "id": "defend-settlement",
-    "title": "Defend the Settlement"
-  },
-  "sideQuests": [],
-  "pressure": {
-    "threat": 0.85,
-    "scarcity": 0.6,
-    "hope": 0.4,
-    "dread": 0.7
-  },
-  "projects": [
-    {"id": "wall", "name": "Build North Wall", "progress": 0.7, "status": "active"}
-  ],
-  "latestNetherEvent": "piglin_raid_nearby"
+  "id": "mission-1",
+  "title": "Defend the Settlement",
+  "description": "optional string",
+  "reward": 100
 }
 ```
 
-**Expected cognition response:**
-- Mayor respects active mission, proposes morale support
-- Captain proposes advancing wall project to completion
-- Warden proposes resource salvage
+Rules:
+- `id` required, non-empty string
+- `title` required, non-empty string
+- `description` optional string
+- `reward` optional finite number `>= 0`
+
+#### `sideQuests`
+- array, length `<= 100`
+- each item:
+
+```json
+{
+  "id": "sq-gather-wood",
+  "title": "Gather Wood",
+  "complexity": 1
+}
+```
+
+Rules:
+- `id` required, non-empty string
+- `title` required, non-empty string
+- `complexity` optional finite number in `[0, 10]`
+
+#### `pressure`
+
+```json
+{
+  "threat": 0.2,
+  "scarcity": 0.3,
+  "hope": 0.8,
+  "dread": 0.1
+}
+```
+
+Rules:
+- all fields required
+- all values finite numbers in `[0, 1]`
+
+#### `projects`
+- array, length `<= 100`
+- each item:
+
+```json
+{
+  "id": "wall",
+  "name": "Build North Wall",
+  "progress": 0.7,
+  "status": "active"
+}
+```
+
+Rules:
+- `id` required, non-empty string
+- `name` required, non-empty string
+- `progress` required, finite number in `[0, 1]`
+- `status` required, one of:
+  - `planning`
+  - `active`
+  - `blocked`
+  - `complete`
+
+#### `latestNetherEvent`
+- required field
+- value must be `string | null`
+
+## Cognition Profile Schema: `profile.v1`
+
+This is not exported by `world-core`, but it is part of the public contract consumed by `propose()`.
+
+```json
+{
+  "schemaVersion": "profile.v1",
+  "id": "mayor-1",
+  "role": "mayor",
+  "townId": "town-1",
+  "traits": {
+    "authority": 0.9,
+    "pragmatism": 0.8,
+    "courage": 0.6,
+    "prudence": 0.7
+  },
+  "goals": {
+    "acceptMissions": true,
+    "growTown": true,
+    "maintainMorale": true
+  }
+}
+```
+
+Rules:
+- `schemaVersion` must equal `"profile.v1"`
+- `id` non-empty string
+- `role` one of `mayor | captain | warden`
+- `townId` non-empty string
+- every trait required and finite in `[0, 1]`
+- `goals` must be a non-empty object of boolean flags
+- `profile.townId` must equal `snapshot.townId`
+
+## Proposal Envelope Schema: `proposal.v2`
+
+`propose(snapshot, profile, memory?)` returns:
+
+```json
+{
+  "schemaVersion": "proposal.v2",
+  "proposalId": "proposal_<sha256>",
+  "snapshotHash": "<sha256>",
+  "decisionEpoch": 5,
+  "preconditions": [
+    { "kind": "mission_absent" },
+    { "kind": "side_quest_exists", "targetId": "sq-gather-wood" }
+  ],
+  "type": "MAYOR_ACCEPT_MISSION",
+  "actorId": "mayor-1",
+  "townId": "town-1",
+  "priority": 0.72,
+  "reason": "No active mission. Authority level 90% ready to accept.",
+  "reasonTags": ["no_active_mission"],
+  "args": {
+    "missionId": "sq-gather-wood"
+  }
+}
+```
+
+### Envelope Rules
+
+#### `schemaVersion`
+- must equal `"proposal.v2"`
+
+#### `proposalId`
+- non-empty string
+- format: `proposal_<64 lowercase hex chars>`
+- deterministic SHA-256 hash of `actorId`, `townId`, `type`, `args`, `priority`, `decisionEpoch`, and `snapshotHash`
+
+#### `snapshotHash`
+- non-empty string
+- format: `64 lowercase hex chars`
+- deterministic SHA-256 hash of the snapshot value
+
+#### `decisionEpoch`
+- integer
+- currently equal to `snapshot.day`
+
+#### `preconditions`
+- optional array
+- each item must include non-empty `kind`
+- optional `targetId` must be a non-empty string
+- optional `field` must be a non-empty string
+- optional `expected` must be `string | number | boolean | null`
+
+#### Core Proposal Fields
+- `type` must be one of:
+  - `MAYOR_ACCEPT_MISSION`
+  - `PROJECT_ADVANCE`
+  - `SALVAGE_PLAN`
+  - `TOWNSFOLK_TALK`
+- `actorId` non-empty string
+- `townId` non-empty string
+- `priority` finite number in `[0, 1]`
+- `reason` non-empty string
+- `reasonTags` array of strings
+
+#### Type-Specific Args
+
+`MAYOR_ACCEPT_MISSION`
+
+```json
+{ "missionId": "sq-gather-wood" }
+```
+
+`PROJECT_ADVANCE`
+
+```json
+{ "projectId": "wall" }
+```
+
+`SALVAGE_PLAN`
+
+```json
+{ "focus": "scarcity" }
+```
+
+Allowed `focus` values:
+- `scarcity`
+- `dread`
+- `general`
+
+`TOWNSFOLK_TALK`
+
+```json
+{ "talkType": "morale-boost" }
+```
+
+Allowed `talkType` values:
+- `morale-boost`
+- `casual`
+
+Malformed args are invalid. Downstream consumers should reject them rather than coerce them.
 
 ## Proposal-to-Command Mapping
 
-Cognition emits proposals, which map to world-core commands:
+Only valid `proposal.v2` envelopes may be mapped.
 
-| Proposal Type | Command Format | Example |
-|---|---|---|
-| `MAYOR_ACCEPT_MISSION` | `mission accept <townId> <missionId>` | `mission accept town-1 sq-gather-wood` |
-| `PROJECT_ADVANCE` | `project advance <townId> <projectId>` | `project advance town-1 farm` |
-| `SALVAGE_PLAN` | `salvage initiate <townId> <focus>` | `salvage initiate town-1 scarcity` |
-| `TOWNSFOLK_TALK` | `townsfolk talk <townId> <talkType>` | `townsfolk talk town-1 morale-boost` |
+| Proposal Type | Command Format |
+|---|---|
+| `MAYOR_ACCEPT_MISSION` | `mission accept <townId> <missionId>` |
+| `PROJECT_ADVANCE` | `project advance <townId> <projectId>` |
+| `SALVAGE_PLAN` | `salvage initiate <townId> <focus>` |
+| `TOWNSFOLK_TALK` | `townsfolk talk <townId> <talkType>` |
 
-**Note:** This mapping is **informational** for testing. It is not executed automatically. Downstream integration (e.g., command dispatcher) is responsible for execution.
+If the proposal envelope is invalid, command mapping must fail fast.
 
-## Testing
+## Determinism Notes
 
-### In Cognition Tests
+- Object key order does not affect `snapshotHash` or `proposalId`.
+- Array order is preserved and therefore affects `snapshotHash`.
+- `decisionEpoch` currently has day-level granularity because it is set from `snapshot.day`.
+- The optional `memory` input changes proposal selection deterministically when its value changes.
 
-```javascript
-import { propose } from './src/propose.js';
-import { proposalToCommand } from './src/proposalMapping.js';
+## Integration Constraints
 
-const snapshot = /* from god snapshot <townId> --json */;
-const proposal = propose(snapshot, mayorProfile);
-const command = proposalToCommand(proposal);
-// command ready for world-core dispatcher (not auto-executed)
-```
+### For World-Core
 
-### In World-Core Tests
+1. Export `snapshot.v1` only.
+2. Keep the snapshot read-only and side-effect free.
+3. Keep `sideQuests` and `projects` bounded to `<= 100`.
+4. Do not add timestamps or random fields.
 
-```bash
-# Export a snapshot
-god snapshot town-1 --json > snapshot.json
+### For Downstream Proposal Consumers
 
-# Pass to cognition (external tool or test)
-# Verify one proposal is always emitted
-# Verify proposal maps to a valid command
-```
-
-## Future Directions
-
-- Add `latestNetherEvent` enum for stronger typing
-- Add role-specific commands (only captain can execute project commands, etc.)
-- Add confidence scores to proposals (optional)
-- Add LLM-generated explanation text as non-authoritative field
+1. Validate `proposal.v2` before execution.
+2. Treat `preconditions` as execution guards.
+3. Do not assume malformed args can be normalized.
+4. Do not assume `decisionEpoch` is finer-grained than `day` yet.

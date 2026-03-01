@@ -4,7 +4,7 @@
  */
 
 export { propose } from './propose.js';
-export { ProposalType, isValidProposal } from './proposalDsl.js';
+export { ProposalType, isValidProposal, isValidProposalArgs } from './proposalDsl.js';
 export { 
   Roles,
   mayorProfile, 
@@ -28,3 +28,8 @@ export {
   proposalToDescription,
   proposalsToCommands
 } from './proposalMapping.js';
+export {
+  ProjectStatuses,
+  SchemaVersion,
+  SnapshotBounds
+} from './schemaVersions.js';

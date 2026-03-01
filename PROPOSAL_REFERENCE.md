@@ -1,240 +1,251 @@
-# Proposal Reference Table
+# Proposal Reference
 
-Complete reference for all proposal types, conditions, and command mappings.
+This file documents the current proposal contract exactly as implemented.
+
+## Public Proposal API
+
+Every emitted proposal is a `proposal.v2` envelope:
+
+```json
+{
+  "schemaVersion": "proposal.v2",
+  "proposalId": "proposal_<sha256>",
+  "snapshotHash": "<sha256>",
+  "decisionEpoch": 5,
+  "preconditions": [],
+  "type": "MAYOR_ACCEPT_MISSION",
+  "actorId": "mayor-1",
+  "townId": "town-1",
+  "priority": 0.72,
+  "reason": "No active mission. Authority level 90% ready to accept.",
+  "reasonTags": ["no_active_mission"],
+  "args": {
+    "missionId": "sq-gather-wood"
+  }
+}
+```
+
+Required fields:
+- `schemaVersion`
+- `proposalId`
+- `snapshotHash`
+- `decisionEpoch`
+- `type`
+- `actorId`
+- `townId`
+- `priority`
+- `reason`
+- `reasonTags`
+- `args`
+
+Optional fields:
+- `preconditions`
+
+## Envelope Semantics
+
+- `schemaVersion` must equal `proposal.v2`
+- `proposalId` is a deterministic SHA-256 hash of `actorId`, `townId`, `type`, `args`, `priority`, `decisionEpoch`, and `snapshotHash`
+- `snapshotHash` is deterministic and derived from the snapshot value
+- `decisionEpoch` is currently equal to `snapshot.day`
+- `preconditions` are advisory execution guards for downstream consumers
 
 ## Proposal Types
 
-### 1. MAYOR_ACCEPT_MISSION
-- **Emission Condition:** No active mission (`snapshot.mission === null`) AND acceptable risk
-- **Governor:** Mayor (authority-focused)
-- **Command Format:** `mission accept <townId> <missionId>`
-- **Args Required:** `{ missionId: string }`
-- **Typical Reason Tags:** `['no_active_mission', 'acceptable_risk']`
-- **Example Snapshot:** Stable conditions (low pressure)
+### 1. `MAYOR_ACCEPT_MISSION`
 
-### 2. PROJECT_ADVANCE
-- **Emission Condition:** Threat present OR pragmatic play OR projects available
-- **Governor:** Captain (pragmatism-focused)
-- **Command Format:** `project advance <townId> <projectId>`
-- **Args Required:** `{ projectId: string }`
-- **Typical Reason Tags:** `['high_threat', 'project_available', 'balanced_approach']`
-- **Example Snapshot:** Threatened conditions (high threat)
+Emission condition:
+- `snapshot.mission === null`
+- `snapshot.sideQuests.length > 0`
 
-### 3. SALVAGE_PLAN
-- **Emission Condition:** High strain (high scarcity OR high dread) AND courage > prudence
-- **Governor:** Warden (courage-focused)
-- **Command Format:** `salvage initiate <townId> <focus>`
-- **Args Required:** `{ focus: 'scarcity' | 'dread' }`
-- **Typical Reason Tags:** `['high_strain', 'dread_spike', 'resource_crisis']`
-- **Example Snapshot:** Resource crisis (high scarcity + dread)
+Target selection:
+- lexicographically lowest `sideQuest.id`
 
-### 4. TOWNSFOLK_TALK
-- **Emission Condition:** Fallback for low hope OR emotional stabilization needed
-- **Governor:** Warden (prudence-focused, low-risk emotional support)
-- **Command Format:** `townsfolk talk <townId> <talkType>`
-- **Args Required:** `{ talkType: 'morale-boost' | 'casual' }`
-- **Typical Reason Tags:** `['low_hope', 'morale_check', 'casual_interaction']`
-- **Example Snapshot:** Stable/low-pressure (fallback)
+Args:
 
----
-
-## Snapshot Condition Reference
-
-### Snapshot: stableSnapshot.json
-- **Day:** 1
-- **Town ID:** town-stable
-- **Pressure:** threat 0.1, scarcity 0.15, hope 0.85, dread 0.05
-- **Mission:** null
-- **Projects:** 2 (farmhouse, storage)
-- **Side Quests:** 1 (wood gathering)
-- **Condition:** Early game, low pressure, high hope
-
-| Governor | Typical Proposal | Command | Reason Tags |
-|----------|------------------|---------|-------------|
-| Mayor | MAYOR_ACCEPT_MISSION | mission accept town-stable sq-wood-gathering | `['no_active_mission']` |
-| Captain | TOWNSFOLK_TALK | townsfolk talk town-stable casual | `['low_threat']` or PROJECT_ADVANCE |
-| Warden | TOWNSFOLK_TALK | townsfolk talk town-stable morale-boost | `['low_strain']` |
-
----
-
-### Snapshot: threatenedSnapshot.json
-- **Day:** 15
-- **Town ID:** town-threatened
-- **Pressure:** threat 0.72, scarcity 0.45, hope 0.55, dread 0.4
-- **Mission:** Active (mob-spawner-clearing)
-- **Projects:** 2 (wall-perimeter 0.6, watchtower 0.2)
-- **Side Quests:** 2 (food supply, materials)
-- **Condition:** Mid-game threat, active mission, resource pressure
-
-| Governor | Typical Proposal | Command | Reason Tags |
-|----------|------------------|---------|-------------|
-| Mayor | PROJECT_ADVANCE | project advance town-threatened wall-perimeter | `['active_mission']` (cannot accept) or PROJECT_ADVANCE |
-| Captain | PROJECT_ADVANCE | project advance town-threatened wall-perimeter | `['high_threat', 'project_available']` |
-| Warden | PROJECT_ADVANCE or SALVAGE_PLAN | project advance town-threatened wall-perimeter | `['balanced_approach']` or `['high_strain']` |
-
----
-
-### Snapshot: resourceCrisisSnapshot.json
-- **Day:** 30
-- **Town ID:** town-resource-crisis
-- **Pressure:** threat 0.35, scarcity 0.88, hope 0.3, dread 0.75
-- **Mission:** Active (resource-hunt)
-- **Projects:** 1 (mine-shaft, blocked)
-- **Side Quests:** 1 (gather-sticks)
-- **Condition:** Late game crisis, high scarcity + dread, low hope
-
-| Governor | Typical Proposal | Command | Reason Tags |
-|----------|------------------|---------|-------------|
-| Mayor | PROJECT_ADVANCE or TOWNSFOLK_TALK | project advance town-resource-crisis mine-shaft | `['active_mission']` or TALK for morale |
-| Captain | PROJECT_ADVANCE | project advance town-resource-crisis mine-shaft | `['project_available', 'balanced_approach']` |
-| Warden | SALVAGE_PLAN | salvage initiate town-resource-crisis scarcity | `['high_strain', 'dread_spike', 'resource_crisis']` |
-
----
-
-## Full Loop Examples
-
-### Example 1: Early Game (Stable)
+```json
+{ "missionId": "<sideQuestId>" }
 ```
-Input:  stableSnapshot.json + mayorProfile
-   ↓
-Evaluation:
-  - evaluateMissionAcceptance() → {score: 0.8, reasonTags: ['no_active_mission'], targetId: 'sq-wood'}
-  - evaluateProjectAdvance() → {score: 0.3, reasonTags: ['low_threat'], targetId: 'farm'}
-  - evaluateSalvagePlan() → {score: 0.1, reasonTags: [], targetId: 'scarcity'}
-  - evaluateTownsfolkTalk() → {score: 0.2, reasonTags: [], targetId: 'casual'}
-   ↓
-Tie-breaking: MAYOR_ACCEPT_MISSION wins (highest score 0.8)
-   ↓
-Output: {
-  type: 'MAYOR_ACCEPT_MISSION',
-  actorId: 'mayor',
-  townId: 'town-stable',
-  priority: 0.8,
-  reason: 'No active mission and quest is available',
-  reasonTags: ['no_active_mission'],
-  args: { missionId: 'sq-wood-gathering' }
+
+Preconditions:
+
+```json
+[
+  { "kind": "mission_absent" },
+  { "kind": "side_quest_exists", "targetId": "<sideQuestId>" }
+]
+```
+
+Typical reason tags:
+- `no_active_mission`
+
+Command mapping:
+- `mission accept <townId> <missionId>`
+
+### 2. `PROJECT_ADVANCE`
+
+Emission condition:
+- `snapshot.pressure.threat > 0.3`
+- `snapshot.projects.length > 0`
+
+Target selection:
+- lexicographically lowest `project.id`
+
+Args:
+
+```json
+{ "projectId": "<projectId>" }
+```
+
+Preconditions:
+
+```json
+[
+  { "kind": "project_exists", "targetId": "<projectId>" }
+]
+```
+
+Typical reason tags:
+- `high_threat`
+- `project_available`
+
+Command mapping:
+- `project advance <townId> <projectId>`
+
+### 3. `SALVAGE_PLAN`
+
+Emission condition:
+- `(snapshot.pressure.scarcity + snapshot.pressure.dread) / 2 > 0.4`
+
+Target selection:
+- `scarcity` when `scarcity >= dread`
+- otherwise `dread`
+
+Args:
+
+```json
+{ "focus": "scarcity" }
+```
+
+Allowed values:
+- `scarcity`
+- `dread`
+- `general`
+
+Preconditions:
+
+```json
+[
+  { "kind": "salvage_focus_supported", "expected": "<focus>" }
+]
+```
+
+Typical reason tags:
+- `high_strain`
+
+Command mapping:
+- `salvage initiate <townId> <focus>`
+
+### 4. `TOWNSFOLK_TALK`
+
+Emission condition:
+- fallback when no higher-priority role action wins
+
+Target selection:
+- `morale-boost` when `hope < 0.6`
+- otherwise `casual`
+
+Args:
+
+```json
+{ "talkType": "morale-boost" }
+```
+
+Allowed values:
+- `morale-boost`
+- `casual`
+
+Preconditions:
+
+```json
+[
+  { "kind": "talk_type_supported", "expected": "<talkType>" }
+]
+```
+
+Typical reason tags:
+- `low_hope` when `hope < 0.6`
+
+Command mapping:
+- `townsfolk talk <townId> <talkType>`
+
+## Proposal Validation Rules
+
+A proposal is invalid if any of the following are true:
+- schema version is wrong
+- `proposalId` format is wrong
+- `snapshotHash` format is wrong
+- `decisionEpoch` is not an integer `>= 0`
+- `type` is unknown
+- `priority` is outside `[0, 1]`
+- `reason` is empty
+- `reasonTags` contains a non-string
+- `args` do not exactly match the selected proposal type
+
+Invalid proposals must fail before command mapping.
+
+## Determinism Rules
+
+1. Equivalent objects with different key insertion order produce the same `snapshotHash`.
+2. Equivalent emitted proposal content with different key insertion order produces the same `proposalId`.
+3. Array order is preserved and remains hash-significant.
+4. `decisionEpoch` changes only when `snapshot.day` changes.
+
+## Worked Example
+
+Input:
+
+```json
+{
+  "schemaVersion": "snapshot.v1",
+  "day": 1,
+  "townId": "town-stable",
+  "mission": null,
+  "sideQuests": [
+    { "id": "sq-wood-gathering", "title": "Gather Wood for Winter", "complexity": 1 }
+  ],
+  "pressure": {
+    "threat": 0.1,
+    "scarcity": 0.15,
+    "hope": 0.85,
+    "dread": 0.05
+  },
+  "projects": [
+    { "id": "farmhouse", "name": "Build Farmhouse", "progress": 0.3, "status": "active" }
+  ],
+  "latestNetherEvent": null
 }
-   ↓
-Command: "mission accept town-stable sq-wood-gathering"
 ```
 
-### Example 2: Threat (Threatened)
-```
-Input:  threatenedSnapshot.json + captainProfile
-   ↓
-Evaluation:
-  - evaluateMissionAcceptance() → {score: 0, reasonTags: ['active_mission'], targetId: null}
-  - evaluateProjectAdvance() → {score: 0.85, reasonTags: ['high_threat', 'project_available'], targetId: 'wall-perimeter'}
-  - evaluateSalvagePlan() → {score: 0.5, reasonTags: ['high_strain'], targetId: 'scarcity'}
-  - evaluateTownsfolkTalk() → {score: 0.2, reasonTags: [], targetId: 'casual'}
-   ↓
-Tie-breaking: PROJECT_ADVANCE wins (highest score 0.85)
-   ↓
-Output: {
-  type: 'PROJECT_ADVANCE',
-  actorId: 'captain',
-  townId: 'town-threatened',
-  priority: 0.85,
-  reason: 'Threat detected; advancing defensive wall',
-  reasonTags: ['high_threat', 'project_available'],
-  args: { projectId: 'wall-perimeter' }
+Mayor result:
+
+```json
+{
+  "schemaVersion": "proposal.v2",
+  "proposalId": "proposal_<sha256>",
+  "snapshotHash": "<sha256>",
+  "decisionEpoch": 1,
+  "preconditions": [
+    { "kind": "mission_absent" },
+    { "kind": "side_quest_exists", "targetId": "sq-wood-gathering" }
+  ],
+  "type": "MAYOR_ACCEPT_MISSION",
+  "actorId": "mayor-1",
+  "townId": "town-stable",
+  "priority": 0.72,
+  "reason": "No active mission. Authority level 90% ready to accept.",
+  "reasonTags": ["no_active_mission"],
+  "args": {
+    "missionId": "sq-wood-gathering"
+  }
 }
-   ↓
-Command: "project advance town-threatened wall-perimeter"
 ```
-
-### Example 3: Crisis (Resource Crisis)
-```
-Input:  resourceCrisisSnapshot.json + wardenProfile
-   ↓
-Evaluation:
-  - evaluateMissionAcceptance() → {score: 0, reasonTags: ['active_mission'], targetId: null}
-  - evaluateProjectAdvance() → {score: 0.4, reasonTags: ['project_available'], targetId: 'mine-shaft'}
-  - evaluateSalvagePlan() → {score: 0.9, reasonTags: ['high_strain', 'dread_spike'], targetId: 'dread'}
-  - evaluateTownsfolkTalk() → {score: 0.3, reasonTags: ['low_hope'], targetId: 'morale-boost'}
-   ↓
-Tie-breaking: SALVAGE_PLAN wins (highest score 0.9)
-   ↓
-Output: {
-  type: 'SALVAGE_PLAN',
-  actorId: 'warden',
-  townId: 'town-resource-crisis',
-  priority: 0.9,
-  reason: 'Resource crisis and despair spike detected; salvage critical',
-  reasonTags: ['high_strain', 'dread_spike', 'resource_crisis'],
-  args: { focus: 'dread' }
-}
-   ↓
-Command: "salvage initiate town-resource-crisis dread"
-```
-
----
-
-## Proposal Validation Checklist
-
-Every proposal MUST satisfy:
-- ✅ Type is one of 4 valid ProposalType values
-- ✅ actorId matches governor role
-- ✅ townId matches snapshot townId
-- ✅ priority ∈ [0, 1]
-- ✅ reason is non-empty string
-- ✅ reasonTags is array of strings
-- ✅ args object exists and contains type-specific fields:
-  - `MAYOR_ACCEPT_MISSION` → `{ missionId }`
-  - `PROJECT_ADVANCE` → `{ projectId }`
-  - `SALVAGE_PLAN` → `{ focus }`
-  - `TOWNSFOLK_TALK` → `{ talkType }`
-
----
-
-## Command Mapping Contract
-
-**Format:** `<verb> <noun> <townId> <target>`
-
-| Proposal Type | Verb | Noun | Target |
-|---------------|------|------|--------|
-| MAYOR_ACCEPT_MISSION | mission | accept | missionId |
-| PROJECT_ADVANCE | project | advance | projectId |
-| SALVAGE_PLAN | salvage | initiate | focus |
-| TOWNSFOLK_TALK | townsfolk | talk | talkType |
-
----
-
-## Anti-Repeat Memory Behavior
-
-The optional `memory` parameter allows tracking repeated proposals:
-
-```javascript
-// First proposal
-const p1 = propose(snapshot, profile);
-// { type: 'MAYOR_ACCEPT_MISSION', priority: 0.8, ... }
-
-// If same proposal repeated:
-const memory = { lastType: 'MAYOR_ACCEPT_MISSION', lastTarget: 'sq-wood', repeatCount: 1 };
-const p2 = propose(snapshot, profile, memory);
-// Priority penalized: 0.8 - (0.1 * 1) = 0.7
-// If other proposals are now higher, they win in tie-breaking
-```
-
----
-
-## Determinism Guarantees
-
-1. **Snapshot Determinism:** Same snapshot JSON always produces same proposal
-2. **Profile Determinism:** Same profile always produces same evaluation scores
-3. **Tie-Breaking Determinism:** Identical scores always break by: priority desc → type index → targetId lexicographic
-4. **Memory Determinism:** Same memory state always produces same penalty
-5. **Command Determinism:** Same proposal always produces same command string
-
----
-
-## Test Coverage
-
-- **95 tests** across 5 test files:
-  - `hardening.test.js` (41 tests) - Input validation, tie-breaking, metadata
-  - `proposalMapping.test.js` (13 tests) - Proposal-to-command mapping
-  - `integration.test.js` (15 tests) - Full loop with fixtures
-  - `fullLoopValidation.test.js` (26 tests) - World-core contract validation
-  - `propose.test.js` (varies) - Core propose() behavior
-
-All tests passing ✅
