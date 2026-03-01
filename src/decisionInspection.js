@@ -2,9 +2,10 @@ import { isValidProfile } from './agentProfiles.js';
 import { evaluateGovernanceCandidates } from './heuristics.js';
 import { proposalToCommand } from './proposalMapping.js';
 import { propose } from './propose.js';
+import { SchemaVersion } from './schemaVersions.js';
 import { canonicalizeSnapshot, isValidSnapshot } from './snapshotSchema.js';
 
-export const DecisionInspectionSchemaVersion = 'decision-inspection.v1';
+export const DecisionInspectionSchemaVersion = SchemaVersion.DECISION_INSPECTION;
 
 /**
  * Build a deterministic observability report for the current cognition cycle.

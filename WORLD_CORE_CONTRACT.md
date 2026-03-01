@@ -10,6 +10,7 @@ This document defines the strict integration seam between `world-core` and `mine
 `minecraft-agent-cognition` provides:
 - a deterministic proposal envelope in `proposal.v2`
 - an optional command string derived from a valid proposal envelope
+- an optional adapter seam in `execution-handoff.v1` / `execution-result.v1`
 
 ## World-Core Snapshot Schema: `snapshot.v1`
 
@@ -284,6 +285,19 @@ Only valid `proposal.v2` envelopes may be mapped.
 | `TOWNSFOLK_TALK` | `townsfolk talk <townId> <talkType>` |
 
 If the proposal envelope is invalid, command mapping must fail fast.
+
+## Execution Handoff Seam
+
+The deterministic cognition layer may package a selected proposal and mapped command into `execution-handoff.v1`.
+
+The authoritative world engine owns:
+- precondition evaluation
+- stale-check evaluation
+- retry and duplicate handling
+- acceptance vs rejection
+- execution result reporting
+
+See [EXECUTION_HANDOFF_CONTRACT.md](EXECUTION_HANDOFF_CONTRACT.md) for the stable JSON payload shapes and result semantics.
 
 ## Determinism Notes
 

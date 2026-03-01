@@ -40,6 +40,13 @@ export {
   proposalsToCommands
 } from './proposalMapping.js';
 export {
+  createExecutionHandoff,
+  createExecutionResult,
+  ExecutionStatus,
+  isValidExecutionHandoff,
+  isValidExecutionResult
+} from './executionHandoff.js';
+export {
   ProjectStatuses,
   SchemaVersion,
   SnapshotBounds

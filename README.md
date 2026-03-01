@@ -197,6 +197,14 @@ The CLI prints deterministic JSON with:
 
 It never executes the command.
 
+## Execution Handoff
+
+For adapter-only execution seams, use the documented `execution-handoff.v1` and `execution-result.v1` payloads in:
+
+- [EXECUTION_HANDOFF_CONTRACT.md](EXECUTION_HANDOFF_CONTRACT.md)
+
+This keeps cognition advisory while giving the authoritative world engine a stable JSON boundary for dedupe, stale checks, precondition evaluation, and execution outcomes.
+
 ## Tests
 
 Run:
@@ -215,3 +223,4 @@ The suite currently verifies:
 
 - [WORLD_CORE_CONTRACT.md](WORLD_CORE_CONTRACT.md)
 - [PROPOSAL_REFERENCE.md](PROPOSAL_REFERENCE.md)
+- [EXECUTION_HANDOFF_CONTRACT.md](EXECUTION_HANDOFF_CONTRACT.md)
