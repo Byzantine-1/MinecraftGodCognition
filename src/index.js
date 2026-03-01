@@ -60,6 +60,8 @@ export {
   isValidDecisionInspectionPayload,
   isValidImmersionInput,
   isValidImmersionProvider,
+  isValidNarrativeContext,
+  normalizeNarrativeContext,
   resolveImmersionConfig,
   resolveImmersionProvider
 } from './immersion.js';

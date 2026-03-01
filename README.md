@@ -216,6 +216,7 @@ It only consumes stable structured artifacts:
 - `execution-handoff.v1`
 - `execution-result.v1`
 - optional lightweight `worldSummary`
+- optional structured `narrativeContext`
 
 It never selects proposals, executes commands, or mutates state.
 
@@ -231,6 +232,8 @@ LLM_MODEL=qwen-max
 Public surface:
 - `buildImmersionPrompt(input)`
 - `generateImmersion(input, options?)`
+- `isValidNarrativeContext(narrativeContext)`
+- `normalizeNarrativeContext(narrativeContext)`
 - `resolveImmersionConfig(env?)`
 - `resolveImmersionProvider(env?)`
 
@@ -241,6 +244,7 @@ Artifact types:
 - `outcome-blurb`
 
 When the provider is missing or fails, the adapter degrades gracefully with deterministic fallback text by default.
+When present, `narrativeContext` can carry advisory rails for `narrativeState`, `chronicleSummary`, `factionTone`, `speakerVoiceProfiles`, and `canonGuardrails`.
 
 ## Tests
 

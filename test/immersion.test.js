@@ -9,11 +9,55 @@ import {
   isValidDecisionInspectionPayload,
   isValidImmersionInput,
   isValidImmersionProvider,
+  isValidNarrativeContext,
+  normalizeNarrativeContext,
   resolveImmersionProvider
 } from '../src/immersion.js';
 import { createDefaultSnapshot } from '../src/snapshotSchema.js';
 
-function createStructuredImmersionInput() {
+function createNarrativeContext(overrides = {}) {
+  return {
+    narrativeState: {
+      arcId: 'harvest-watch',
+      chapterTitle: 'Walls Before Winter',
+      currentBeat: 'The town prepares quietly under pressure.',
+      motifs: ['lantern light', 'watchful silence']
+    },
+    chronicleSummary: {
+      latestEntry: 'The council ordered timber and stone counted before dusk.',
+      openThreads: ['east wall repairs', 'food ledger strain'],
+      recentEvents: ['a patrol returned at dawn', 'a nether flare was seen last week']
+    },
+    factionTone: [
+      { factionId: 'council', tone: 'measured resolve', stance: 'steady' },
+      { factionId: 'craftsfolk', tone: 'wary optimism', stance: 'concerned' }
+    ],
+    speakerVoiceProfiles: [
+      {
+        speakerId: 'mayor-immersion',
+        register: 'formal',
+        style: 'measured',
+        values: ['stability', 'duty'],
+        bannedPhrases: ['guaranteed victory']
+      },
+      {
+        speakerId: 'chronicler',
+        register: 'archival',
+        style: 'spare',
+        values: ['accuracy'],
+        bannedPhrases: ['miracle']
+      }
+    ],
+    canonGuardrails: {
+      immutableFacts: ['the engine remains authoritative', 'the east wall is under repair'],
+      prohibitedClaims: ['the command already changed the world', 'the mayor can overrule execution rejection'],
+      requiredDisclaimers: ['flavor text is advisory only']
+    },
+    ...overrides
+  };
+}
+
+function createStructuredImmersionInput({ narrativeContext = createNarrativeContext() } = {}) {
   const snapshot = createDefaultSnapshot('town-immersion', 8);
   const profile = {
     ...mayorProfile,
@@ -71,6 +115,7 @@ function createStructuredImmersionInput() {
     decisionInspection,
     executionHandoff,
     executionResult,
+    narrativeContext,
     worldSummary: {
       morale: 'steady',
       weather: 'clear',
@@ -85,6 +130,7 @@ describe('Immersion Adapter', () => {
     input.artifactType = 'leader-speech';
 
     assert.strictEqual(isValidDecisionInspectionPayload(input.decisionInspection), true);
+    assert.strictEqual(isValidNarrativeContext(input.narrativeContext), true);
     assert.strictEqual(isValidImmersionInput(input), true);
 
     const provider = resolveImmersionProvider({
@@ -162,7 +208,8 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(first.provider.requested, 'none');
     assert.strictEqual(first.provider.used, 'fallback');
     assert.strictEqual(typeof first.content, 'string');
-    assert(first.content.includes('Rumor in town-immersion'));
+    assert(first.content.toLowerCase().includes('town-immersion'));
+    assert(first.content.toLowerCase().includes('rumor'));
     assert.strictEqual(first.error.code, 'PROVIDER_UNAVAILABLE');
   });
 
@@ -186,20 +233,136 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(result.provider.requested, 'qwen');
     assert.strictEqual(result.provider.used, 'fallback');
     assert.strictEqual(result.error.code, 'PROVIDER_REQUEST_FAILED');
-    assert(result.content.includes('Outcome for town-immersion'));
+    assert(result.content.toLowerCase().includes('town-immersion'));
+    assert(result.content.toLowerCase().includes('outcome'));
   });
 
   it('should build stable prompts from equivalent structured inputs', () => {
-    const firstInput = createStructuredImmersionInput();
-    const secondInput = createStructuredImmersionInput();
+    const firstInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        factionTone: [
+          { factionId: 'craftsfolk', tone: 'wary optimism', stance: 'concerned' },
+          { factionId: 'council', tone: 'measured resolve', stance: 'steady' }
+        ],
+        speakerVoiceProfiles: [
+          {
+            speakerId: 'chronicler',
+            register: 'archival',
+            style: 'spare',
+            values: ['accuracy'],
+            bannedPhrases: ['miracle']
+          },
+          {
+            speakerId: 'mayor-immersion',
+            register: 'formal',
+            style: 'measured',
+            values: ['duty', 'stability'],
+            bannedPhrases: ['guaranteed victory']
+          }
+        ],
+        canonGuardrails: {
+          immutableFacts: ['the east wall is under repair', 'the engine remains authoritative'],
+          prohibitedClaims: ['the mayor can overrule execution rejection', 'the command already changed the world'],
+          requiredDisclaimers: ['flavor text is advisory only']
+        }
+      })
+    });
+    const secondInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        factionTone: [
+          { factionId: 'council', tone: 'measured resolve', stance: 'steady' },
+          { factionId: 'craftsfolk', tone: 'wary optimism', stance: 'concerned' }
+        ],
+        speakerVoiceProfiles: [
+          {
+            speakerId: 'mayor-immersion',
+            register: 'formal',
+            style: 'measured',
+            values: ['stability', 'duty'],
+            bannedPhrases: ['guaranteed victory']
+          },
+          {
+            speakerId: 'chronicler',
+            register: 'archival',
+            style: 'spare',
+            values: ['accuracy'],
+            bannedPhrases: ['miracle']
+          }
+        ],
+        canonGuardrails: {
+          immutableFacts: ['the engine remains authoritative', 'the east wall is under repair'],
+          prohibitedClaims: ['the command already changed the world', 'the mayor can overrule execution rejection'],
+          requiredDisclaimers: ['flavor text is advisory only']
+        }
+      })
+    });
 
     firstInput.worldSummary = { weather: 'clear', morale: 'steady', walls: 'under repair' };
     secondInput.worldSummary = { walls: 'under repair', morale: 'steady', weather: 'clear' };
+
+    assert.deepStrictEqual(
+      normalizeNarrativeContext(firstInput.narrativeContext),
+      normalizeNarrativeContext(secondInput.narrativeContext)
+    );
 
     const firstPrompt = buildImmersionPrompt(firstInput);
     const secondPrompt = buildImmersionPrompt(secondInput);
 
     assert.deepStrictEqual(firstPrompt, secondPrompt);
+  });
+
+  it('should let voice profiles change downstream flavor without changing authority', async () => {
+    const formalInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        speakerVoiceProfiles: [
+          {
+            speakerId: 'mayor-immersion',
+            register: 'formal',
+            style: 'measured',
+            values: ['stability'],
+            bannedPhrases: ['guaranteed victory']
+          }
+        ]
+      })
+    });
+    const plainInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        speakerVoiceProfiles: [
+          {
+            speakerId: 'mayor-immersion',
+            register: 'plain',
+            style: 'direct',
+            values: ['clarity'],
+            bannedPhrases: ['glorious destiny']
+          }
+        ]
+      })
+    });
+    formalInput.artifactType = 'leader-speech';
+    plainInput.artifactType = 'leader-speech';
+
+    const formalPrompt = buildImmersionPrompt(formalInput);
+    const plainPrompt = buildImmersionPrompt(plainInput);
+    const formalResult = await generateImmersion(formalInput, { env: {} });
+    const plainResult = await generateImmersion(plainInput, { env: {} });
+
+    assert.notDeepStrictEqual(formalPrompt, plainPrompt);
+    assert.notStrictEqual(formalResult.content, plainResult.content);
+    assert.deepStrictEqual(formalResult.authority, plainResult.authority);
+  });
+
+  it('should fall back safely when narrative context is absent', async () => {
+    const input = createStructuredImmersionInput({ narrativeContext: undefined });
+
+    assert.strictEqual(isValidNarrativeContext(input.narrativeContext), true);
+
+    const prompt = buildImmersionPrompt(input);
+    const result = await generateImmersion(input, { env: {} });
+
+    assert.strictEqual(typeof prompt.system, 'string');
+    assert.strictEqual(result.status, 'fallback');
+    assert.strictEqual(typeof result.content, 'string');
+    assert.strictEqual(result.authority.commandExecution, false);
   });
 
   it('should remain downstream and non-authoritative', async () => {
@@ -214,6 +377,9 @@ describe('Immersion Adapter', () => {
       commandExecution: false,
       stateMutation: false
     });
+    assert.strictEqual(result.sourceSchemas.decisionInspection, 'decision-inspection.v1');
+    assert.strictEqual(result.sourceSchemas.executionHandoff, 'execution-handoff.v1');
+    assert.strictEqual(result.sourceSchemas.executionResult, 'execution-result.v1');
     assert.deepStrictEqual(input, snapshotBefore);
   });
 });

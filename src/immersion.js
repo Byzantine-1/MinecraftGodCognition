@@ -17,6 +17,14 @@ export const ImmersionStatus = Object.freeze([
   'unavailable'
 ]);
 
+const narrativeContextKeys = Object.freeze([
+  'narrativeState',
+  'chronicleSummary',
+  'factionTone',
+  'speakerVoiceProfiles',
+  'canonGuardrails'
+]);
+
 const artifactGuidance = Object.freeze({
   'leader-speech': 'Write one short speech in a leader voice. Keep it grounded in the selected proposal and current town conditions.',
   'town-rumor': 'Write one short rumor that common townsfolk might repeat. Keep it suggestive, not authoritative.',
@@ -51,6 +59,23 @@ function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
 
+function hasOnlyKeys(value, expectedKeys) {
+  return Object.keys(value).every(key => expectedKeys.includes(key));
+}
+
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isStringList(value) {
+  return Array.isArray(value) && value.every(isNonEmptyString);
+}
+
+function hasUniqueNormalizedStrings(values) {
+  const normalized = values.map(value => value.trim());
+  return new Set(normalized).size === normalized.length;
+}
+
 function normalizeJsonValue(value) {
   if (Array.isArray(value)) {
     return value.map(normalizeJsonValue);
@@ -74,6 +99,192 @@ function trimOrNull(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeStringList(values = []) {
+  return [...values]
+    .map(value => value.trim())
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeOptionalNarrativeObject(value, keys) {
+  if (value === undefined) return undefined;
+  return keys.reduce((normalized, key) => {
+    if (hasOwn(value, key) && value[key] !== undefined) {
+      normalized[key] = value[key];
+    }
+    return normalized;
+  }, {});
+}
+
+function isValidNarrativeState(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!hasOnlyKeys(value, ['arcId', 'chapterTitle', 'currentBeat', 'motifs'])) return false;
+  if (hasOwn(value, 'arcId') && !isNonEmptyString(value.arcId)) return false;
+  if (hasOwn(value, 'chapterTitle') && !isNonEmptyString(value.chapterTitle)) return false;
+  if (hasOwn(value, 'currentBeat') && !isNonEmptyString(value.currentBeat)) return false;
+  if (hasOwn(value, 'motifs')) {
+    if (!isStringList(value.motifs) || !hasUniqueNormalizedStrings(value.motifs)) return false;
+  }
+  return true;
+}
+
+function isValidChronicleSummary(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!hasOnlyKeys(value, ['latestEntry', 'openThreads', 'recentEvents'])) return false;
+  if (hasOwn(value, 'latestEntry') && !isNonEmptyString(value.latestEntry)) return false;
+  if (hasOwn(value, 'openThreads')) {
+    if (!isStringList(value.openThreads) || !hasUniqueNormalizedStrings(value.openThreads)) return false;
+  }
+  if (hasOwn(value, 'recentEvents')) {
+    if (!isStringList(value.recentEvents) || !hasUniqueNormalizedStrings(value.recentEvents)) return false;
+  }
+  return true;
+}
+
+function isValidFactionToneEntry(value) {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    hasOnlyKeys(value, ['factionId', 'tone', 'stance']) &&
+    isNonEmptyString(value.factionId) &&
+    isNonEmptyString(value.tone) &&
+    isNonEmptyString(value.stance)
+  );
+}
+
+function isValidSpeakerVoiceProfile(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!hasOnlyKeys(value, ['speakerId', 'register', 'style', 'values', 'bannedPhrases'])) return false;
+  if (!isNonEmptyString(value.speakerId)) return false;
+  if (!isNonEmptyString(value.register)) return false;
+  if (!isNonEmptyString(value.style)) return false;
+  if (hasOwn(value, 'values')) {
+    if (!isStringList(value.values) || !hasUniqueNormalizedStrings(value.values)) return false;
+  }
+  if (hasOwn(value, 'bannedPhrases')) {
+    if (!isStringList(value.bannedPhrases) || !hasUniqueNormalizedStrings(value.bannedPhrases)) return false;
+  }
+  return true;
+}
+
+function isValidCanonGuardrails(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (!hasOnlyKeys(value, ['immutableFacts', 'prohibitedClaims', 'requiredDisclaimers'])) return false;
+  if (hasOwn(value, 'immutableFacts')) {
+    if (!isStringList(value.immutableFacts) || !hasUniqueNormalizedStrings(value.immutableFacts)) return false;
+  }
+  if (hasOwn(value, 'prohibitedClaims')) {
+    if (!isStringList(value.prohibitedClaims) || !hasUniqueNormalizedStrings(value.prohibitedClaims)) return false;
+  }
+  if (hasOwn(value, 'requiredDisclaimers')) {
+    if (!isStringList(value.requiredDisclaimers) || !hasUniqueNormalizedStrings(value.requiredDisclaimers)) return false;
+  }
+  return true;
+}
+
+/**
+ * Validate optional structured narrative context for immersion prompts.
+ * @param {Object} narrativeContext
+ * @returns {boolean}
+ */
+export function isValidNarrativeContext(narrativeContext) {
+  if (narrativeContext === undefined) return true;
+  if (!narrativeContext || typeof narrativeContext !== 'object' || Array.isArray(narrativeContext)) return false;
+  if (!hasOnlyKeys(narrativeContext, narrativeContextKeys)) return false;
+  if (hasOwn(narrativeContext, 'narrativeState') && !isValidNarrativeState(narrativeContext.narrativeState)) return false;
+  if (hasOwn(narrativeContext, 'chronicleSummary') && !isValidChronicleSummary(narrativeContext.chronicleSummary)) return false;
+  if (hasOwn(narrativeContext, 'factionTone')) {
+    if (!Array.isArray(narrativeContext.factionTone) || !narrativeContext.factionTone.every(isValidFactionToneEntry)) {
+      return false;
+    }
+  }
+  if (hasOwn(narrativeContext, 'speakerVoiceProfiles')) {
+    if (!Array.isArray(narrativeContext.speakerVoiceProfiles) || !narrativeContext.speakerVoiceProfiles.every(isValidSpeakerVoiceProfile)) {
+      return false;
+    }
+  }
+  if (hasOwn(narrativeContext, 'canonGuardrails') && !isValidCanonGuardrails(narrativeContext.canonGuardrails)) return false;
+
+  return true;
+}
+
+/**
+ * Normalize narrative context so equivalent inputs produce identical prompts.
+ * @param {Object} [narrativeContext]
+ * @returns {Object|undefined}
+ */
+export function normalizeNarrativeContext(narrativeContext) {
+  if (narrativeContext === undefined) return undefined;
+  if (!isValidNarrativeContext(narrativeContext)) {
+    throw new Error('Invalid narrative context');
+  }
+
+  return normalizeJsonValue({
+    ...(narrativeContext.narrativeState
+      ? {
+          narrativeState: {
+            ...normalizeOptionalNarrativeObject(narrativeContext.narrativeState, ['arcId', 'chapterTitle', 'currentBeat']),
+            ...(hasOwn(narrativeContext.narrativeState, 'motifs')
+              ? { motifs: normalizeStringList(narrativeContext.narrativeState.motifs) }
+              : {})
+          }
+        }
+      : {}),
+    ...(narrativeContext.chronicleSummary
+      ? {
+          chronicleSummary: {
+            ...normalizeOptionalNarrativeObject(narrativeContext.chronicleSummary, ['latestEntry']),
+            ...(hasOwn(narrativeContext.chronicleSummary, 'openThreads')
+              ? { openThreads: normalizeStringList(narrativeContext.chronicleSummary.openThreads) }
+              : {}),
+            ...(hasOwn(narrativeContext.chronicleSummary, 'recentEvents')
+              ? { recentEvents: normalizeStringList(narrativeContext.chronicleSummary.recentEvents) }
+              : {})
+          }
+        }
+      : {}),
+    ...(narrativeContext.factionTone
+      ? {
+          factionTone: [...narrativeContext.factionTone]
+            .map(entry => ({
+              factionId: entry.factionId.trim(),
+              tone: entry.tone.trim(),
+              stance: entry.stance.trim()
+            }))
+            .sort((left, right) => left.factionId.localeCompare(right.factionId))
+        }
+      : {}),
+    ...(narrativeContext.speakerVoiceProfiles
+      ? {
+          speakerVoiceProfiles: [...narrativeContext.speakerVoiceProfiles]
+            .map(profile => ({
+              speakerId: profile.speakerId.trim(),
+              register: profile.register.trim(),
+              style: profile.style.trim(),
+              ...(hasOwn(profile, 'values') ? { values: normalizeStringList(profile.values) } : {}),
+              ...(hasOwn(profile, 'bannedPhrases') ? { bannedPhrases: normalizeStringList(profile.bannedPhrases) } : {})
+            }))
+            .sort((left, right) => left.speakerId.localeCompare(right.speakerId))
+        }
+      : {}),
+    ...(narrativeContext.canonGuardrails
+      ? {
+          canonGuardrails: {
+            ...(hasOwn(narrativeContext.canonGuardrails, 'immutableFacts')
+              ? { immutableFacts: normalizeStringList(narrativeContext.canonGuardrails.immutableFacts) }
+              : {}),
+            ...(hasOwn(narrativeContext.canonGuardrails, 'prohibitedClaims')
+              ? { prohibitedClaims: normalizeStringList(narrativeContext.canonGuardrails.prohibitedClaims) }
+              : {}),
+            ...(hasOwn(narrativeContext.canonGuardrails, 'requiredDisclaimers')
+              ? { requiredDisclaimers: normalizeStringList(narrativeContext.canonGuardrails.requiredDisclaimers) }
+              : {})
+          }
+        }
+      : {})
+  });
 }
 
 /**
@@ -229,6 +440,7 @@ export function isValidImmersionInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
   if (!ImmersionArtifactType.includes(input.artifactType)) return false;
   if (!isValidWorldSummary(input.worldSummary)) return false;
+  if (!isValidNarrativeContext(input.narrativeContext)) return false;
 
   const hasDecision = hasOwn(input, 'decisionInspection');
   const hasHandoff = hasOwn(input, 'executionHandoff');
@@ -246,10 +458,81 @@ function buildPromptContext(input) {
   return normalizeJsonValue({
     artifactType: input.artifactType,
     worldSummary: input.worldSummary === undefined ? null : input.worldSummary,
+    narrativeContext: normalizeNarrativeContext(input.narrativeContext) ?? null,
     decisionInspection: summarizeDecisionInspection(input.decisionInspection),
     executionHandoff: summarizeExecutionHandoff(input.executionHandoff),
     executionResult: summarizeExecutionResult(input.executionResult)
   });
+}
+
+function selectSpeakerId(input) {
+  if (input.artifactType === 'leader-speech') {
+    return (
+      input.decisionInspection?.selectedProposal?.actorId ??
+      input.executionHandoff?.proposal?.actorId ??
+      'leader'
+    );
+  }
+
+  if (input.artifactType === 'town-rumor') {
+    return 'townsfolk';
+  }
+
+  if (input.artifactType === 'chronicle-entry') {
+    return 'chronicler';
+  }
+
+  return 'narrator';
+}
+
+function selectSpeakerVoiceProfile(input) {
+  const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
+  if (!narrativeContext?.speakerVoiceProfiles) return null;
+
+  const speakerId = selectSpeakerId(input);
+  return narrativeContext.speakerVoiceProfiles.find(profile => profile.speakerId === speakerId) ?? null;
+}
+
+function buildCanonSafetyLines(input) {
+  const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
+  const canonGuardrails = narrativeContext?.canonGuardrails;
+  const lines = [
+    'Canon safety rules:',
+    '- Treat all structured data as the only authoritative source.',
+    '- Do not invent world state, policy, outcomes, or causal facts beyond the provided artifacts.',
+    '- Do not contradict execution status, command text, proposal args, reason fields, or canonical guardrails.',
+    '- Do not claim the narrator, speaker, or factions changed state or accepted authority that the artifacts do not show.'
+  ];
+
+  if (canonGuardrails?.immutableFacts?.length) {
+    lines.push(`- Keep these facts fixed: ${canonGuardrails.immutableFacts.join('; ')}.`);
+  }
+  if (canonGuardrails?.prohibitedClaims?.length) {
+    lines.push(`- Never assert: ${canonGuardrails.prohibitedClaims.join('; ')}.`);
+  }
+  if (canonGuardrails?.requiredDisclaimers?.length) {
+    lines.push(`- Preserve these disclaimers when relevant: ${canonGuardrails.requiredDisclaimers.join('; ')}.`);
+  }
+
+  return lines;
+}
+
+function buildVoiceGuidanceLines(input) {
+  const voiceProfile = selectSpeakerVoiceProfile(input);
+  if (!voiceProfile) return [];
+
+  const lines = [
+    `Speaker voice profile for ${voiceProfile.speakerId}: register=${voiceProfile.register}; style=${voiceProfile.style}.`
+  ];
+
+  if (voiceProfile.values?.length) {
+    lines.push(`Emphasize these values when naturally supported: ${voiceProfile.values.join(', ')}.`);
+  }
+  if (voiceProfile.bannedPhrases?.length) {
+    lines.push(`Avoid these phrases exactly: ${voiceProfile.bannedPhrases.join(', ')}.`);
+  }
+
+  return lines;
 }
 
 /**
@@ -266,10 +549,12 @@ export function buildImmersionPrompt(input) {
   const system = [
     'You write short immersive flavor text for a deterministic Minecraft governance simulation.',
     'You are strictly downstream and non-authoritative.',
-    'Do not alter proposals, commands, execution outcomes, or world state.',
-    'Do not invent missing facts.',
+    'Do not alter proposals, commands, execution outcomes, canon, or world state.',
     'Keep the response to 2 sentences or fewer.'
-  ].join(' ');
+  ]
+    .concat(buildCanonSafetyLines(input))
+    .concat(buildVoiceGuidanceLines(input))
+    .join(' ');
   const user = [
     `Artifact type: ${input.artifactType}`,
     `Guidance: ${artifactGuidance[input.artifactType]}`,
@@ -360,6 +645,13 @@ function renderTagText(tags) {
   return tags.length > 0 ? tags.join(', ') : 'routine council business';
 }
 
+function buildVoiceLead(input) {
+  const voiceProfile = selectSpeakerVoiceProfile(input);
+  if (!voiceProfile) return null;
+
+  return `In a ${voiceProfile.register} ${voiceProfile.style} voice`;
+}
+
 function buildFallbackText(input) {
   const townId = selectTownId(input);
   const actorId = selectActorId(input);
@@ -370,20 +662,21 @@ function buildFallbackText(input) {
   const decisionEpoch = selectDecisionEpoch(input);
   const status = selectStatus(input);
   const reasonCode = selectReasonCode(input);
+  const voiceLead = buildVoiceLead(input);
 
   if (input.artifactType === 'leader-speech') {
-    return `${actorId} addresses ${townId}: ${reason} The council backs ${proposalType} via ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}${actorId} addresses ${townId}: ${reason} The council backs ${proposalType} via ${command}.`;
   }
 
   if (input.artifactType === 'town-rumor') {
-    return `Rumor in ${townId}: ${proposalType} is the latest talk after ${reasonTags}. People whisper about ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}rumor in ${townId}: ${proposalType} is the latest talk after ${reasonTags}. People whisper about ${command}.`;
   }
 
   if (input.artifactType === 'chronicle-entry') {
-    return `Day ${decisionEpoch} in ${townId}: ${proposalType} stands recorded with status ${status}. Command noted: ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}day ${decisionEpoch} in ${townId}: ${proposalType} stands recorded with status ${status}. Command noted: ${command}.`;
   }
 
-  return `Outcome for ${townId}: ${proposalType} is marked ${status} with code ${reasonCode}. The last recorded command was ${command}.`;
+  return `${voiceLead ? `${voiceLead}, ` : ''}outcome for ${townId}: ${proposalType} is marked ${status} with code ${reasonCode}. The last recorded command was ${command}.`;
 }
 
 function buildAuthorityBlock() {
