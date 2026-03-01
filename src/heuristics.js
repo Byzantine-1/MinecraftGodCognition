@@ -55,6 +55,57 @@ function selectBestOption(options) {
   return rankedOptions[0];
 }
 
+function buildRoleCandidates(snapshot, profile) {
+  const { role } = profile;
+  const candidates = [];
+
+  if (role === 'mayor') {
+    const res = evaluateMissionAcceptance(snapshot, profile);
+    if (res.score > 0) {
+      candidates.push({
+        type: ProposalType.MAYOR_ACCEPT_MISSION,
+        priority: res.score,
+        targetId: res.targetId,
+        reasonTags: res.reasonTags
+      });
+    }
+  }
+
+  if (role === 'captain') {
+    const res = evaluateProjectAdvance(snapshot, profile);
+    if (res.score > 0) {
+      candidates.push({
+        type: ProposalType.PROJECT_ADVANCE,
+        priority: res.score,
+        targetId: res.targetId,
+        reasonTags: res.reasonTags
+      });
+    }
+  }
+
+  if (role === 'warden') {
+    const res = evaluateSalvagePlan(snapshot, profile);
+    if (res.score > 0) {
+      candidates.push({
+        type: ProposalType.SALVAGE_PLAN,
+        priority: res.score,
+        targetId: res.targetId,
+        reasonTags: res.reasonTags
+      });
+    }
+  }
+
+  const talkRes = evaluateTownsfolkTalk(snapshot, profile);
+  candidates.push({
+    type: ProposalType.TOWNSFOLK_TALK,
+    priority: talkRes.score,
+    targetId: talkRes.targetId,
+    reasonTags: talkRes.reasonTags
+  });
+
+  return candidates;
+}
+
 function getPressureValues(pressure = {}) {
   return {
     threat: typeof pressure.threat === 'number' ? pressure.threat : 0,
@@ -257,8 +308,8 @@ export function evaluateTownsfolkTalk(snapshot, profile) {
 
 function selectBestCandidate(candidates) {
   if (!candidates || candidates.length === 0) return { type: null, priority: 0 }; 
-  // sort in-place because we don't care about original order
-  candidates.sort((a, b) => {
+  const sortedCandidates = [...candidates];
+  sortedCandidates.sort((a, b) => {
     // priority descending
     if (a.priority !== b.priority) return b.priority - a.priority;
     // proposal order ascending index
@@ -270,7 +321,7 @@ function selectBestCandidate(candidates) {
     const kb = (b.targetId || '').toString();
     return ka.localeCompare(kb);
   });
-  return candidates[0];
+  return sortedCandidates[0];
 }
 
 function applyMemoryPenalty(candidates, memory = {}) {
@@ -287,6 +338,32 @@ function applyMemoryPenalty(candidates, memory = {}) {
 }
 
 /**
+ * Calculate and sort the deterministic candidate set before winner selection.
+ * @param {Object} snapshot - World snapshot
+ * @param {Object} profile - Governor profile
+ * @param {Object} memory - Optional recent proposal memory {lastType, lastTarget, repeatCount}
+ * @returns {Array<Object>} Sorted candidate set
+ */
+export function evaluateGovernanceCandidates(snapshot, profile, memory = {}) {
+  const candidates = buildRoleCandidates(snapshot, profile).map(candidate => ({
+    ...candidate,
+    reasonTags: candidate.reasonTags || []
+  }));
+
+  applyMemoryPenalty(candidates, memory);
+
+  return [...candidates].sort((a, b) => {
+    if (a.priority !== b.priority) return b.priority - a.priority;
+    const ia = getProposalOrder(a.type);
+    const ib = getProposalOrder(b.type);
+    if (ia !== ib) return ia - ib;
+    const ka = (a.targetId || '').toString();
+    const kb = (b.targetId || '').toString();
+    return ka.localeCompare(kb);
+  });
+}
+
+/**
  * Calculate role-specific proposal priority
  * @param {Object} snapshot - World snapshot
  * @param {Object} profile - Governor profile
@@ -294,38 +371,7 @@ function applyMemoryPenalty(candidates, memory = {}) {
  * @returns {Object} { type, priority, targetId, reasonTags }
  */
 export function evaluateGovernanceProposal(snapshot, profile, memory = {}) {
-  const { role } = profile;
-  
-  let candidates = [];
-  
-  if (role === 'mayor') {
-    const res = evaluateMissionAcceptance(snapshot, profile);
-    if (res.score > 0) {
-      candidates.push({ type: ProposalType.MAYOR_ACCEPT_MISSION, priority: res.score, targetId: res.targetId, reasonTags: res.reasonTags });
-    }
-  }
-  
-  if (role === 'captain') {
-    const res = evaluateProjectAdvance(snapshot, profile);
-    if (res.score > 0) {
-      candidates.push({ type: ProposalType.PROJECT_ADVANCE, priority: res.score, targetId: res.targetId, reasonTags: res.reasonTags });
-    }
-  }
-  
-  if (role === 'warden') {
-    const res = evaluateSalvagePlan(snapshot, profile);
-    if (res.score > 0) {
-      candidates.push({ type: ProposalType.SALVAGE_PLAN, priority: res.score, targetId: res.targetId, reasonTags: res.reasonTags });
-    }
-  }
-  
-  // Fallback is always available
-  const talkRes = evaluateTownsfolkTalk(snapshot, profile);
-  candidates.push({ type: ProposalType.TOWNSFOLK_TALK, priority: talkRes.score, targetId: talkRes.targetId, reasonTags: talkRes.reasonTags });
-  
-  // apply anti-repeat memory penalty
-  applyMemoryPenalty(candidates, memory);
-  
+  const candidates = evaluateGovernanceCandidates(snapshot, profile, memory);
   const best = selectBestCandidate(candidates);
   return {
     type: best.type,

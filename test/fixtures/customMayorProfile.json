@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "profile.v1",
+  "id": "mayor-custom",
+  "role": "mayor",
+  "townId": "town-stable",
+  "traits": {
+    "authority": 0.92,
+    "pragmatism": 0.84,
+    "courage": 0.61,
+    "prudence": 0.72
+  },
+  "goals": {
+    "acceptMissions": true,
+    "growTown": true,
+    "maintainMorale": true
+  }
+}

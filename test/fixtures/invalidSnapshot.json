@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "snapshot.v1",
+  "day": -1,
+  "townId": "town-bad",
+  "mission": null,
+  "sideQuests": [],
+  "pressure": {
+    "threat": 0.2,
+    "scarcity": 0.3,
+    "hope": 0.8,
+    "dread": 0.1
+  },
+  "projects": [],
+  "latestNetherEvent": null
+}

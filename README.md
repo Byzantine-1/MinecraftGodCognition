@@ -175,6 +175,28 @@ console.log(proposal.snapshotHash);
 console.log(command);
 ```
 
+## CLI Inspection
+
+Run:
+
+```bash
+npm run inspect -- --snapshot test/fixtures/stableSnapshot.json --profile mayor
+```
+
+Or with an explicit profile file:
+
+```bash
+npm run inspect -- --snapshot test/fixtures/stableSnapshot.json --profile test/fixtures/customMayorProfile.json
+```
+
+The CLI prints deterministic JSON with:
+- the sorted scored candidate set
+- the selected `proposal.v2` envelope
+- the mapped command string
+- `reason`, `reasonTags`, and `preconditions` when present
+
+It never executes the command.
+
 ## Tests
 
 Run:

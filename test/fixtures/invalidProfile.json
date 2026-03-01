@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "profile.v1",
+  "id": "broken-profile",
+  "role": "mayor",
+  "townId": "town-stable",
+  "traits": {
+    "authority": 1.5,
+    "pragmatism": 0.8,
+    "courage": 0.6,
+    "prudence": 0.7
+  },
+  "goals": {
+    "acceptMissions": true
+  }
+}
