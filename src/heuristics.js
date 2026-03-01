@@ -1,4 +1,5 @@
 import { ProposalType } from './proposalDsl.js';
+import { getProposalOrder } from './proposalRegistry.js';
 
 /**
  * Heuristics - World-core governance decision logic
@@ -91,13 +92,6 @@ export function evaluateTownsfolkTalk(snapshot, profile) {
   return { score: 0.2, reasonTags: [], targetId: 'casual' };
 }
 
-const proposalOrder = Object.freeze([
-  ProposalType.MAYOR_ACCEPT_MISSION,
-  ProposalType.PROJECT_ADVANCE,
-  ProposalType.SALVAGE_PLAN,
-  ProposalType.TOWNSFOLK_TALK
-]);
-
 function selectBestCandidate(candidates) {
   if (!candidates || candidates.length === 0) return { type: null, priority: 0 }; 
   // sort in-place because we don't care about original order
@@ -105,8 +99,8 @@ function selectBestCandidate(candidates) {
     // priority descending
     if (a.priority !== b.priority) return b.priority - a.priority;
     // proposal order ascending index
-    const ia = proposalOrder.indexOf(a.type);
-    const ib = proposalOrder.indexOf(b.type);
+    const ia = getProposalOrder(a.type);
+    const ib = getProposalOrder(b.type);
     if (ia !== ib) return ia - ib;
     // final tie-break on targetId lexicographically
     const ka = (a.targetId || '').toString();

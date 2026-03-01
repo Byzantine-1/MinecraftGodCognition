@@ -7,7 +7,8 @@
  * No execution, no world mutation—just the mapping interface.
  */
 
-import { isValidProposal, ProposalType } from './proposalDsl.js';
+import { isValidProposal } from './proposalDsl.js';
+import { mapProposalToCommand } from './proposalRegistry.js';
 
 /**
  * Map a proposal to a world-core command string
@@ -19,32 +20,7 @@ export function proposalToCommand(proposal) {
     throw new Error('Invalid proposal envelope');
   }
 
-  const { type, townId, args } = proposal;
-
-  switch (type) {
-    case ProposalType.MAYOR_ACCEPT_MISSION:
-      // Command: accept mission
-      const missionId = args.missionId;
-      return `mission accept ${townId} ${missionId}`;
-
-    case ProposalType.PROJECT_ADVANCE:
-      // Command: advance project
-      const projectId = args.projectId;
-      return `project advance ${townId} ${projectId}`;
-
-    case ProposalType.SALVAGE_PLAN:
-      // Command: initiate salvage
-      const focus = args.focus;
-      return `salvage initiate ${townId} ${focus}`;
-
-    case ProposalType.TOWNSFOLK_TALK:
-      // Command: talk to townsfolk
-      const talkType = args.talkType;
-      return `townsfolk talk ${townId} ${talkType}`;
-
-    default:
-      throw new Error(`Unknown proposal type: ${type}`);
-  }
+  return mapProposalToCommand(proposal);
 }
 
 /**

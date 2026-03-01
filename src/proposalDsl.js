@@ -4,43 +4,19 @@
  */
 
 import { SchemaVersion } from './schemaVersions.js';
-
-export const ProposalType = {
-  MAYOR_ACCEPT_MISSION: 'MAYOR_ACCEPT_MISSION',
-  PROJECT_ADVANCE: 'PROJECT_ADVANCE',
-  SALVAGE_PLAN: 'SALVAGE_PLAN',
-  TOWNSFOLK_TALK: 'TOWNSFOLK_TALK'
-};
-
-const proposalArgValidators = Object.freeze({
-  [ProposalType.MAYOR_ACCEPT_MISSION]: args => hasExactStringArgs(args, ['missionId']),
-  [ProposalType.PROJECT_ADVANCE]: args => hasExactStringArgs(args, ['projectId']),
-  [ProposalType.SALVAGE_PLAN]: args => hasExactEnumArg(args, 'focus', ['scarcity', 'dread', 'general']),
-  [ProposalType.TOWNSFOLK_TALK]: args => hasExactEnumArg(args, 'talkType', ['morale-boost', 'casual'])
-});
+import {
+  isValidProposalArgs as registryIsValidProposalArgs,
+  listProposalTypes,
+  ProposalType
+} from './proposalRegistry.js';
+export { ProposalType } from './proposalRegistry.js';
+export { isValidProposalArgs } from './proposalRegistry.js';
 
 const hashPattern = /^[0-9a-f]{64}$/;
 const proposalIdPattern = /^proposal_[0-9a-f]{64}$/;
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function hasOnlyKeys(value, requiredKeys) {
-  const keys = Object.keys(value);
-  return keys.length === requiredKeys.length && requiredKeys.every(key => keys.includes(key));
-}
-
-function hasExactStringArgs(args, requiredKeys) {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
-  if (!hasOnlyKeys(args, requiredKeys)) return false;
-  return requiredKeys.every(key => typeof args[key] === 'string' && args[key].length > 0);
-}
-
-function hasExactEnumArg(args, key, allowedValues) {
-  if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
-  if (!hasOnlyKeys(args, [key])) return false;
-  return typeof args[key] === 'string' && allowedValues.includes(args[key]);
 }
 
 function isValidPrecondition(precondition) {
@@ -54,12 +30,6 @@ function isValidPrecondition(precondition) {
     if (typeof expected === 'number' && !Number.isFinite(expected)) return false;
   }
   return true;
-}
-
-export function isValidProposalArgs(type, args) {
-  const validateArgs = proposalArgValidators[type];
-  if (!validateArgs) return false;
-  return validateArgs(args);
 }
 
 /**
@@ -95,7 +65,7 @@ export function isValidProposal(proposal) {
       if (!isValidPrecondition(precondition)) return false;
     }
   }
-  if (!Object.values(ProposalType).includes(proposal.type)) return false;
+  if (!listProposalTypes().includes(proposal.type)) return false;
   if (typeof proposal.actorId !== 'string' || proposal.actorId.length === 0) return false;
   if (typeof proposal.townId !== 'string' || proposal.townId.length === 0) return false;
   if (typeof proposal.priority !== 'number' || !Number.isFinite(proposal.priority) || proposal.priority < 0 || proposal.priority > 1) return false;
@@ -104,6 +74,6 @@ export function isValidProposal(proposal) {
   for (const tag of proposal.reasonTags) {
     if (typeof tag !== 'string') return false;
   }
-  if (!isValidProposalArgs(proposal.type, proposal.args)) return false;
+  if (!registryIsValidProposalArgs(proposal.type, proposal.args)) return false;
   return true;
 }

@@ -4,10 +4,11 @@
  */
 
 import { createHash } from 'crypto';
-import { ProposalType, isValidProposal } from './proposalDsl.js';
+import { isValidProposal } from './proposalDsl.js';
 import { evaluateGovernanceProposal } from './heuristics.js';
 import { isValidSnapshot } from './snapshotSchema.js';
 import { isValidProfile } from './agentProfiles.js';
+import { materializeProposalType } from './proposalRegistry.js';
 import { SchemaVersion } from './schemaVersions.js';
 
 function stableStringify(value) {
@@ -31,24 +32,6 @@ function hashValue(value) {
 
 function createProposalId(payload) {
   return `proposal_${hashValue(payload)}`;
-}
-
-function buildPreconditions(proposalType, args) {
-  switch (proposalType) {
-    case ProposalType.MAYOR_ACCEPT_MISSION:
-      return [
-        { kind: 'mission_absent' },
-        { kind: 'side_quest_exists', targetId: args.missionId }
-      ];
-    case ProposalType.PROJECT_ADVANCE:
-      return [{ kind: 'project_exists', targetId: args.projectId }];
-    case ProposalType.SALVAGE_PLAN:
-      return [{ kind: 'salvage_focus_supported', expected: args.focus }];
-    case ProposalType.TOWNSFOLK_TALK:
-      return [{ kind: 'talk_type_supported', expected: args.talkType }];
-    default:
-      return [];
-  }
 }
 
 /**
@@ -79,7 +62,7 @@ export function propose(snapshot, profile, memory = {}) {
     throw new Error('Snapshot and profile townId mismatch');
   }
 
-  const { townId, day, mission, pressure, projects } = snapshot;
+  const { townId, day } = snapshot;
   const { id: actorId } = profile;
 
   // Evaluate proposal for this role (may include memory for anti-repeat)
@@ -89,38 +72,19 @@ export function propose(snapshot, profile, memory = {}) {
   const targetId = evaluation.targetId;
   const reasonTags = evaluation.reasonTags || [];
 
-  // Build type-specific arguments
-  let args = {};
-  let reason = '';
-
-  switch (proposalType) {
-    case ProposalType.MAYOR_ACCEPT_MISSION:
-      args = { missionId: targetId };
-      reason = `No active mission. Authority level ${(profile.traits.authority * 100).toFixed(0)}% ready to accept.`;
-      break;
-
-    case ProposalType.PROJECT_ADVANCE:
-      args = { projectId: targetId || (projects.length > 0 ? projects[0].id : null) };
-      reason = `Threat level ${(pressure.threat * 100).toFixed(0)}% demands project advancement for defense.`;
-      break;
-
-    case ProposalType.SALVAGE_PLAN:
-      args = { focus: targetId || 'general' };
-      reason = `Scarcity ${(pressure.scarcity * 100).toFixed(0)}% and dread ${(pressure.dread * 100).toFixed(0)}% require salvage response.`;
-      break;
-
-    case ProposalType.TOWNSFOLK_TALK:
-      args = { talkType: targetId || 'morale-boost' };
-      reason = `Hope level ${(pressure.hope * 100).toFixed(0)}%. Time to speak with townspeople.`;
-      break;
-
-    default:
-      throw new Error(`Unsupported proposal type: ${proposalType}`);
-  }
+  const materialized = materializeProposalType(proposalType, {
+    snapshot,
+    profile,
+    targetId,
+    priority,
+    reasonTags
+  });
+  const args = materialized.args;
+  const reason = materialized.reason;
+  const preconditions = materialized.preconditions || [];
 
   const snapshotHash = hashValue(snapshot);
   const decisionEpoch = day;
-  const preconditions = buildPreconditions(proposalType, args);
 
   // Build proposal
   const proposal = {

@@ -5,6 +5,16 @@
 
 export { propose } from './propose.js';
 export { ProposalType, isValidProposal, isValidProposalArgs } from './proposalDsl.js';
+export {
+  getProposalDefinition,
+  getProposalOrder,
+  isValidProposalDefinition,
+  isValidProposalRegistry,
+  listProposalTypes,
+  mapProposalToCommand,
+  materializeProposalType,
+  proposalRegistry
+} from './proposalRegistry.js';
 export { 
   Roles,
   mayorProfile, 
