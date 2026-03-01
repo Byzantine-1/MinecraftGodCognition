@@ -3,6 +3,14 @@ function hasOnlyKeys(value, requiredKeys) {
   return keys.length === requiredKeys.length && requiredKeys.every(key => keys.includes(key));
 }
 
+function getLowestId(items = []) {
+  if (!Array.isArray(items) || items.length === 0) return null;
+
+  return items
+    .map(item => item.id)
+    .sort()[0] || null;
+}
+
 function hasExactStringArgs(args, requiredKeys) {
   if (!args || typeof args !== 'object' || Array.isArray(args)) return false;
   if (!hasOnlyKeys(args, requiredKeys)) return false;
@@ -15,19 +23,20 @@ function hasExactEnumArg(args, key, allowedValues) {
   return typeof args[key] === 'string' && allowedValues.includes(args[key]);
 }
 
-function buildMissionProposal({ profile, targetId }) {
+function buildMissionProposal({ snapshot, profile, targetId }) {
+  const missionId = targetId || getLowestId(snapshot?.sideQuests);
   return {
-    args: { missionId: targetId },
+    args: { missionId },
     reason: `No active mission. Authority level ${(profile.traits.authority * 100).toFixed(0)}% ready to accept.`,
     preconditions: [
       { kind: 'mission_absent' },
-      { kind: 'side_quest_exists', targetId }
+      { kind: 'side_quest_exists', targetId: missionId }
     ]
   };
 }
 
 function buildProjectAdvanceProposal({ snapshot, targetId }) {
-  const projectId = targetId || (snapshot.projects.length > 0 ? snapshot.projects[0].id : null);
+  const projectId = targetId || getLowestId(snapshot.projects);
   return {
     args: { projectId },
     reason: `Threat level ${(snapshot.pressure.threat * 100).toFixed(0)}% demands project advancement for defense.`,

@@ -6,6 +6,93 @@
 
 import { ProjectStatuses, SchemaVersion, SnapshotBounds } from './schemaVersions.js';
 
+const SnapshotKeys = [
+  'schemaVersion',
+  'day',
+  'townId',
+  'mission',
+  'sideQuests',
+  'pressure',
+  'projects',
+  'latestNetherEvent'
+];
+
+const MissionKeys = ['id', 'title', 'description', 'reward'];
+const SideQuestKeys = ['id', 'title', 'complexity'];
+const PressureKeys = ['threat', 'scarcity', 'hope', 'dread'];
+const ProjectKeys = ['id', 'name', 'progress', 'status'];
+
+function hasOnlyAllowedKeys(value, allowedKeys) {
+  const keys = Object.keys(value);
+  return keys.every(key => allowedKeys.includes(key));
+}
+
+function compareText(a, b) {
+  return a.localeCompare(b);
+}
+
+function compareNullableNumber(a, b) {
+  const left = typeof a === 'number' ? a : Number.POSITIVE_INFINITY;
+  const right = typeof b === 'number' ? b : Number.POSITIVE_INFINITY;
+  return left - right;
+}
+
+function compareSideQuests(left, right) {
+  return (
+    compareText(left.id, right.id) ||
+    compareText(left.title, right.title) ||
+    compareNullableNumber(left.complexity, right.complexity)
+  );
+}
+
+function compareProjects(left, right) {
+  return (
+    compareText(left.id, right.id) ||
+    compareText(left.name, right.name) ||
+    (left.progress - right.progress) ||
+    compareText(left.status, right.status)
+  );
+}
+
+function canonicalizeMission(mission) {
+  if (mission === null) return null;
+
+  return {
+    id: mission.id,
+    title: mission.title,
+    ...('description' in mission ? { description: mission.description } : {}),
+    ...('reward' in mission ? { reward: mission.reward } : {})
+  };
+}
+
+function canonicalizeSideQuest(sideQuest) {
+  return {
+    id: sideQuest.id,
+    title: sideQuest.title,
+    ...('complexity' in sideQuest ? { complexity: sideQuest.complexity } : {})
+  };
+}
+
+function canonicalizeProject(project) {
+  return {
+    id: project.id,
+    name: project.name,
+    progress: project.progress,
+    status: project.status
+  };
+}
+
+function hasUniqueIds(items) {
+  const seenIds = new Set();
+
+  for (const item of items) {
+    if (seenIds.has(item.id)) return false;
+    seenIds.add(item.id);
+  }
+
+  return true;
+}
+
 /**
  * @typedef {Object} Mission
  * @property {string} id - Mission identifier
@@ -56,6 +143,8 @@ import { ProjectStatuses, SchemaVersion, SnapshotBounds } from './schemaVersions
  */
 export function isValidSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return false;
+  if (Array.isArray(snapshot)) return false;
+  if (!hasOnlyAllowedKeys(snapshot, SnapshotKeys)) return false;
 
   if (snapshot.schemaVersion !== SchemaVersion.SNAPSHOT) return false;
 
@@ -69,6 +158,8 @@ export function isValidSnapshot(snapshot) {
   if (!Object.prototype.hasOwnProperty.call(snapshot, 'mission')) return false;
   if (snapshot.mission !== null) {
     if (!snapshot.mission || typeof snapshot.mission !== 'object') return false;
+    if (Array.isArray(snapshot.mission)) return false;
+    if (!hasOnlyAllowedKeys(snapshot.mission, MissionKeys)) return false;
     if (typeof snapshot.mission.id !== 'string' || snapshot.mission.id.length === 0) return false;
     if (typeof snapshot.mission.title !== 'string' || snapshot.mission.title.length === 0) return false;
     if ('description' in snapshot.mission && typeof snapshot.mission.description !== 'string') return false;
@@ -82,8 +173,11 @@ export function isValidSnapshot(snapshot) {
   // Validate sideQuests
   if (!Array.isArray(snapshot.sideQuests)) return false;
   if (snapshot.sideQuests.length > SnapshotBounds.maxSideQuests) return false;
+  if (!hasUniqueIds(snapshot.sideQuests)) return false;
   for (const quest of snapshot.sideQuests) {
     if (!quest || typeof quest !== 'object') return false;
+    if (Array.isArray(quest)) return false;
+    if (!hasOnlyAllowedKeys(quest, SideQuestKeys)) return false;
     if (typeof quest.id !== 'string' || quest.id.length === 0) return false;
     if (typeof quest.title !== 'string' || quest.title.length === 0) return false;
     if ('complexity' in quest) {
@@ -95,6 +189,8 @@ export function isValidSnapshot(snapshot) {
 
   // Validate pressure
   if (!snapshot.pressure || typeof snapshot.pressure !== 'object') return false;
+  if (Array.isArray(snapshot.pressure)) return false;
+  if (!hasOnlyAllowedKeys(snapshot.pressure, PressureKeys)) return false;
   const { threat, scarcity, hope, dread } = snapshot.pressure;
   if (typeof threat !== 'number' || !Number.isFinite(threat) || threat < 0 || threat > 1) return false;
   if (typeof scarcity !== 'number' || !Number.isFinite(scarcity) || scarcity < 0 || scarcity > 1) return false;
@@ -104,8 +200,11 @@ export function isValidSnapshot(snapshot) {
   // Validate projects
   if (!Array.isArray(snapshot.projects)) return false;
   if (snapshot.projects.length > SnapshotBounds.maxProjects) return false;
+  if (!hasUniqueIds(snapshot.projects)) return false;
   for (const proj of snapshot.projects) {
     if (!proj || typeof proj !== 'object') return false;
+    if (Array.isArray(proj)) return false;
+    if (!hasOnlyAllowedKeys(proj, ProjectKeys)) return false;
     if (typeof proj.id !== 'string' || proj.id.length === 0) return false;
     if (typeof proj.name !== 'string' || proj.name.length === 0) return false;
     if (typeof proj.progress !== 'number' || !Number.isFinite(proj.progress) || proj.progress < 0 || proj.progress > 1) return false;
@@ -116,6 +215,38 @@ export function isValidSnapshot(snapshot) {
   if (snapshot.latestNetherEvent !== null && typeof snapshot.latestNetherEvent !== 'string') return false;
 
   return true;
+}
+
+/**
+ * Canonicalize a validated snapshot so semantically equivalent snapshots
+ * produce stable hashes and decisions.
+ * @param {Snapshot} snapshot
+ * @returns {Snapshot}
+ */
+export function canonicalizeSnapshot(snapshot) {
+  if (!isValidSnapshot(snapshot)) {
+    throw new Error('Invalid snapshot structure');
+  }
+
+  return {
+    schemaVersion: snapshot.schemaVersion,
+    day: snapshot.day,
+    townId: snapshot.townId,
+    mission: canonicalizeMission(snapshot.mission),
+    sideQuests: snapshot.sideQuests
+      .map(canonicalizeSideQuest)
+      .sort(compareSideQuests),
+    pressure: {
+      threat: snapshot.pressure.threat,
+      scarcity: snapshot.pressure.scarcity,
+      hope: snapshot.pressure.hope,
+      dread: snapshot.pressure.dread
+    },
+    projects: snapshot.projects
+      .map(canonicalizeProject)
+      .sort(compareProjects),
+    latestNetherEvent: snapshot.latestNetherEvent
+  };
 }
 
 /**

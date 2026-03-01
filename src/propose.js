@@ -6,7 +6,7 @@
 import { createHash } from 'crypto';
 import { isValidProposal } from './proposalDsl.js';
 import { evaluateGovernanceProposal } from './heuristics.js';
-import { isValidSnapshot } from './snapshotSchema.js';
+import { canonicalizeSnapshot, isValidSnapshot } from './snapshotSchema.js';
 import { isValidProfile } from './agentProfiles.js';
 import { materializeProposalType } from './proposalRegistry.js';
 import { SchemaVersion } from './schemaVersions.js';
@@ -62,18 +62,19 @@ export function propose(snapshot, profile, memory = {}) {
     throw new Error('Snapshot and profile townId mismatch');
   }
 
-  const { townId, day } = snapshot;
+  const canonicalSnapshot = canonicalizeSnapshot(snapshot);
+  const { townId, day } = canonicalSnapshot;
   const { id: actorId } = profile;
 
   // Evaluate proposal for this role (may include memory for anti-repeat)
-  const evaluation = evaluateGovernanceProposal(snapshot, profile, memory);
+  const evaluation = evaluateGovernanceProposal(canonicalSnapshot, profile, memory);
   const proposalType = evaluation.type;
   const priority = evaluation.priority;
   const targetId = evaluation.targetId;
   const reasonTags = evaluation.reasonTags || [];
 
   const materialized = materializeProposalType(proposalType, {
-    snapshot,
+    snapshot: canonicalSnapshot,
     profile,
     targetId,
     priority,
@@ -83,7 +84,7 @@ export function propose(snapshot, profile, memory = {}) {
   const reason = materialized.reason;
   const preconditions = materialized.preconditions || [];
 
-  const snapshotHash = hashValue(snapshot);
+  const snapshotHash = hashValue(canonicalSnapshot);
   const decisionEpoch = day;
 
   // Build proposal

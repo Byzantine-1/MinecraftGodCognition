@@ -68,6 +68,7 @@ Rules:
 - `title` required, non-empty string
 - `description` optional string
 - `reward` optional finite number `>= 0`
+- no additional keys allowed
 
 #### `sideQuests`
 - array, length `<= 100`
@@ -85,6 +86,8 @@ Rules:
 - `id` required, non-empty string
 - `title` required, non-empty string
 - `complexity` optional finite number in `[0, 10]`
+- no additional keys allowed
+- `id` values must be unique within the array
 
 #### `pressure`
 
@@ -100,6 +103,7 @@ Rules:
 Rules:
 - all fields required
 - all values finite numbers in `[0, 1]`
+- no additional keys allowed
 
 #### `projects`
 - array, length `<= 100`
@@ -123,10 +127,15 @@ Rules:
   - `active`
   - `blocked`
   - `complete`
+- no additional keys allowed
+- `id` values must be unique within the array
 
 #### `latestNetherEvent`
 - required field
 - value must be `string | null`
+
+Top-level rule:
+- no additional snapshot keys allowed beyond the documented `snapshot.v1` fields
 
 ## Cognition Profile Schema: `profile.v1`
 
@@ -201,6 +210,7 @@ Rules:
 - non-empty string
 - format: `64 lowercase hex chars`
 - deterministic SHA-256 hash of the snapshot value
+- computed from the canonicalized validated snapshot value
 
 #### `decisionEpoch`
 - integer
@@ -278,7 +288,9 @@ If the proposal envelope is invalid, command mapping must fail fast.
 ## Determinism Notes
 
 - Object key order does not affect `snapshotHash` or `proposalId`.
-- Array order is preserved and therefore affects `snapshotHash`.
+- `sideQuests` are canonicalized by `id`, then `title`, then `complexity`.
+- `projects` are canonicalized by `id`, then `name`, then `progress`, then `status`.
+- Reordered equivalent valid snapshots produce the same `snapshotHash`.
 - `decisionEpoch` currently has day-level granularity because it is set from `snapshot.day`.
 - The optional `memory` input changes proposal selection deterministically when its value changes.
 
@@ -289,7 +301,8 @@ If the proposal envelope is invalid, command mapping must fail fast.
 1. Export `snapshot.v1` only.
 2. Keep the snapshot read-only and side-effect free.
 3. Keep `sideQuests` and `projects` bounded to `<= 100`.
-4. Do not add timestamps or random fields.
+4. Keep `sideQuests[*].id` and `projects[*].id` unique within each snapshot.
+5. Do not add timestamps, random fields, or undocumented snapshot keys.
 
 ### For Downstream Proposal Consumers
 

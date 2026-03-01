@@ -23,6 +23,7 @@ export {
   isValidProfile 
 } from './agentProfiles.js';
 export { 
+  canonicalizeSnapshot,
   createDefaultSnapshot, 
   isValidSnapshot 
 } from './snapshotSchema.js';

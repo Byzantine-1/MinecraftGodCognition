@@ -45,7 +45,7 @@ Optional fields:
 
 - `schemaVersion` must equal `proposal.v2`
 - `proposalId` is a deterministic SHA-256 hash of `actorId`, `townId`, `type`, `args`, `priority`, `decisionEpoch`, and `snapshotHash`
-- `snapshotHash` is deterministic and derived from the snapshot value
+- `snapshotHash` is deterministic and derived from the canonicalized validated snapshot value
 - `decisionEpoch` is currently equal to `snapshot.day`
 - `preconditions` are advisory execution guards for downstream consumers
 
@@ -197,8 +197,10 @@ Invalid proposals must fail before command mapping.
 
 1. Equivalent objects with different key insertion order produce the same `snapshotHash`.
 2. Equivalent emitted proposal content with different key insertion order produces the same `proposalId`.
-3. Array order is preserved and remains hash-significant.
-4. `decisionEpoch` changes only when `snapshot.day` changes.
+3. `sideQuests` are canonicalized by `id`, then `title`, then `complexity`.
+4. `projects` are canonicalized by `id`, then `name`, then `progress`, then `status`.
+5. Reordered equivalent valid snapshots produce the same `snapshotHash`.
+6. `decisionEpoch` changes only when `snapshot.day` changes.
 
 ## Worked Example
 

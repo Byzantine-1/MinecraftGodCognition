@@ -16,10 +16,11 @@ The current system is a library, not a runtime service. It validates inputs, sco
 
 1. `propose(snapshot, profile, memory?)`
 2. `isValidSnapshot(snapshot)` and `isValidProfile(profile)`
-3. `evaluateGovernanceProposal(snapshot, profile, memory)`
-4. proposal envelope construction
-5. `isValidProposal(proposal)`
-6. optional `proposalToCommand(proposal)`
+3. `canonicalizeSnapshot(snapshot)`
+4. `evaluateGovernanceProposal(snapshot, profile, memory)`
+5. proposal envelope construction
+6. `isValidProposal(proposal)`
+7. optional `proposalToCommand(proposal)`
 
 ## Versioned Schemas
 
@@ -51,8 +52,11 @@ Validation rules:
 - `day` must be an integer `>= 0`
 - `sideQuests.length <= 100`
 - `projects.length <= 100`
+- snapshot objects are closed over the documented keys
 - `pressure.*` must be finite numbers in `[0, 1]`
 - `mission` must be `null` or include non-empty `id` and `title`
+- `sideQuests[*].id` must be unique
+- `projects[*].id` must be unique
 - `projects[*].status` must be one of `planning | active | blocked | complete`
 - `latestNetherEvent` must be `string | null`
 
@@ -108,7 +112,7 @@ Validation rules:
 
 Envelope semantics:
 - `proposalId` is a deterministic SHA-256 hash of `actorId`, `townId`, `type`, `args`, `priority`, `decisionEpoch`, and `snapshotHash`
-- `snapshotHash` is a deterministic SHA-256 hash of the validated snapshot value
+- `snapshotHash` is a deterministic SHA-256 hash of the canonicalized validated snapshot value
 - `decisionEpoch` is currently `snapshot.day`
 - `preconditions` are optional execution guards for downstream consumers
 
@@ -142,7 +146,9 @@ Malformed args are rejected. Command mapping does not normalize invalid values i
 
 The current contract is deterministic under these rules:
 - object key order does not affect `snapshotHash` or `proposalId`
-- array order is preserved and therefore semantically significant in hashing
+- `sideQuests` are canonicalized by `id`, then `title`, then `complexity`
+- `projects` are canonicalized by `id`, then `name`, then `progress`, then `status`
+- reordered equivalent valid snapshots produce the same `snapshotHash`
 - no randomness, timestamps, or external IO affect scoring
 - the anti-repeat memory penalty is deterministic for the same memory input
 
