@@ -62,10 +62,13 @@ export {
   isValidImmersionProvider,
   isValidImmersionResult,
   isValidNarrativeContext,
+  ImmersionMemoryRole,
   normalizeNarrativeContext,
   resolveImmersionConfig,
   resolveImmersionProvider,
-  selectWorldMemoryForArtifact
+  selectActorContinuity,
+  selectWorldMemoryForArtifact,
+  selectWorldMemoryForRole
 } from './immersion.js';
 export {
   createNarrativeContextWithWorldMemory,

@@ -1,6 +1,6 @@
 import assert from 'assert';
 import { describe, it } from 'node:test';
-import { mayorProfile } from '../src/agentProfiles.js';
+import { captainProfile, mayorProfile, wardenProfile } from '../src/agentProfiles.js';
 import { inspectDecision } from '../src/decisionInspection.js';
 import { createExecutionHandoff, createExecutionResult } from '../src/executionHandoff.js';
 import {
@@ -12,7 +12,9 @@ import {
   isValidNarrativeContext,
   normalizeNarrativeContext,
   resolveImmersionProvider,
-  selectWorldMemoryForArtifact
+  selectActorContinuity,
+  selectWorldMemoryForArtifact,
+  selectWorldMemoryForRole
 } from '../src/immersion.js';
 import { WorldMemoryContextType } from '../src/worldMemoryContext.js';
 import { createDefaultSnapshot } from '../src/snapshotSchema.js';
@@ -41,6 +43,34 @@ function createNarrativeContext(overrides = {}) {
         style: 'measured',
         values: ['stability', 'duty'],
         bannedPhrases: ['guaranteed victory']
+      },
+      {
+        speakerId: 'mayor-harbor',
+        register: 'plain',
+        style: 'civic',
+        values: ['continuity', 'order'],
+        bannedPhrases: ['glorious dawn']
+      },
+      {
+        speakerId: 'captain-immersion',
+        register: 'martial',
+        style: 'plain',
+        values: ['readiness', 'clarity'],
+        bannedPhrases: ['glorious destiny']
+      },
+      {
+        speakerId: 'captain-harbor',
+        register: 'brisk',
+        style: 'field-report',
+        values: ['speed', 'discipline'],
+        bannedPhrases: ['eternal calm']
+      },
+      {
+        speakerId: 'warden-immersion',
+        register: 'practical',
+        style: 'cautious',
+        values: ['survival', 'reserve'],
+        bannedPhrases: ['endless abundance']
       },
       {
         speakerId: 'chronicler',
@@ -117,6 +147,19 @@ function createCanonicalWorldMemory() {
       },
       {
         sourceType: 'execution_receipt',
+        handoffId: 'handoff_mission',
+        proposalType: 'MAYOR_ACCEPT_MISSION',
+        command: 'mission accept town-immersion sq-wood',
+        authorityCommands: ['mayor talk town-immersion', 'mayor accept town-immersion'],
+        status: 'executed',
+        reasonCode: 'EXECUTED',
+        kind: 'execution_result',
+        at: 375,
+        townId: 'town-immersion',
+        summary: 'The mayor accepted a timber-gathering mission for the town.'
+      },
+      {
+        sourceType: 'execution_receipt',
         handoffId: 'handoff_salvage',
         proposalType: 'SALVAGE_PLAN',
         command: 'salvage initiate town-immersion scarcity',
@@ -147,7 +190,7 @@ function createCanonicalWorldMemory() {
       schemaVersion: 1,
       townId: 'town-immersion',
       chronicleCount: 3,
-      historyCount: 3,
+      historyCount: 4,
       lastChronicleAt: 300,
       lastHistoryAt: 400,
       hope: 55,
@@ -171,7 +214,7 @@ function createCanonicalWorldMemory() {
       factionId: 'council',
       towns: ['town-immersion'],
       chronicleCount: 3,
-      historyCount: 3,
+      historyCount: 4,
       lastChronicleAt: 300,
       lastHistoryAt: 400,
       hostilityToPlayer: 10,
@@ -182,11 +225,22 @@ function createCanonicalWorldMemory() {
   };
 }
 
-function createStructuredImmersionInput({ narrativeContext = createNarrativeContext() } = {}) {
+function createStructuredImmersionInput({
+  narrativeContext = createNarrativeContext(),
+  profileTemplate = mayorProfile,
+  artifactType = 'chronicle-entry',
+  actorId,
+  pressureOverrides = {}
+} = {}) {
   const snapshot = createDefaultSnapshot('town-immersion', 8);
+  const profileId = ({
+    mayor: 'mayor-immersion',
+    captain: 'captain-immersion',
+    warden: 'warden-immersion'
+  })[profileTemplate.role] ?? `${profileTemplate.role}-immersion`;
   const profile = {
-    ...mayorProfile,
-    id: 'mayor-immersion',
+    ...profileTemplate,
+    id: actorId ?? profileId,
     townId: 'town-immersion'
   };
   snapshot.sideQuests = [
@@ -197,7 +251,8 @@ function createStructuredImmersionInput({ narrativeContext = createNarrativeCont
     threat: 0.35,
     scarcity: 0.4,
     hope: 0.55,
-    dread: 0.25
+    dread: 0.25,
+    ...pressureOverrides
   };
   snapshot.projects = [
     { id: 'wall-east', name: 'East Wall', progress: 0.4, status: 'active' }
@@ -236,7 +291,7 @@ function createStructuredImmersionInput({ narrativeContext = createNarrativeCont
   });
 
   return {
-    artifactType: 'chronicle-entry',
+    artifactType,
     decisionInspection,
     executionHandoff,
     executionResult,
@@ -507,6 +562,100 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(Boolean(outcomeMemory.townSummary), true);
   });
 
+  it('should shape shared world memory differently for mayor, captain, warden, and townsfolk roles', () => {
+    const worldMemory = createCanonicalWorldMemory();
+
+    const mayorMemory = selectWorldMemoryForRole('mayor', 'leader-speech', worldMemory);
+    const captainMemory = selectWorldMemoryForRole('captain', 'leader-speech', worldMemory);
+    const wardenMemory = selectWorldMemoryForRole('warden', 'outcome-blurb', worldMemory);
+    const townsfolkMemory = selectWorldMemoryForRole('townsfolk', 'town-rumor', worldMemory);
+
+    assert.strictEqual(mayorMemory.recentHistory[0].proposalType, 'MAYOR_ACCEPT_MISSION');
+    assert.strictEqual(Boolean(mayorMemory.townSummary), true);
+    assert.strictEqual(Boolean(mayorMemory.factionSummary), false);
+
+    assert.strictEqual(captainMemory.recentChronicle[0].entryType, 'project');
+    assert.strictEqual(captainMemory.recentHistory[0].proposalType, 'PROJECT_ADVANCE');
+    assert.strictEqual(Boolean(captainMemory.townSummary), true);
+
+    assert.strictEqual(wardenMemory.recentChronicle[0].entryType, 'warning');
+    assert.strictEqual(wardenMemory.recentHistory[0].proposalType, 'SALVAGE_PLAN');
+    assert.strictEqual(wardenMemory.recentHistory[0].status, 'stale');
+
+    assert.strictEqual(Boolean(townsfolkMemory.townSummary), false);
+    assert.strictEqual(Boolean(townsfolkMemory.factionSummary), true);
+    assert.strictEqual(townsfolkMemory.recentHistory[0].kind, 'execution_result');
+  });
+
+  it('should keep role-shaped memory slices consistent with the same shared canonical payload', () => {
+    const worldMemory = createCanonicalWorldMemory();
+    const roles = [
+      ['mayor', 'leader-speech'],
+      ['captain', 'leader-speech'],
+      ['warden', 'outcome-blurb'],
+      ['townsfolk', 'town-rumor']
+    ];
+    const baseChronicleIds = new Set(worldMemory.recentChronicle.map(entry => entry.sourceRecordId));
+    const baseHistoryIds = new Set(worldMemory.recentHistory.map(entry => `${entry.handoffId}:${entry.summary}`));
+
+    for (const [role, artifactType] of roles) {
+      const shaped = selectWorldMemoryForRole(role, artifactType, worldMemory);
+
+      assert.strictEqual(shaped.type, worldMemory.type);
+      assert.strictEqual(shaped.schemaVersion, worldMemory.schemaVersion);
+      assert.deepStrictEqual(shaped.scope, worldMemory.scope);
+      assert(shaped.recentChronicle.every(entry => baseChronicleIds.has(entry.sourceRecordId)));
+      assert(shaped.recentHistory.every(entry => baseHistoryIds.has(`${entry.handoffId}:${entry.summary}`)));
+    }
+  });
+
+  it('should derive stable actor-specific continuity from the same role and memory', () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-immersion',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createCanonicalWorldMemory()
+      })
+    });
+
+    const firstContinuity = selectActorContinuity(input);
+    const secondContinuity = selectActorContinuity(JSON.parse(JSON.stringify(input)));
+
+    assert.deepStrictEqual(firstContinuity, secondContinuity);
+    assert.strictEqual(firstContinuity.role, 'mayor');
+    assert.strictEqual(firstContinuity.officeTitle, 'Mayor');
+    assert.strictEqual(firstContinuity.speakerId, 'mayor-immersion');
+    assert.strictEqual(typeof firstContinuity.recentConcern, 'string');
+    assert(firstContinuity.displayName.includes('Mayor mayor-immersion'));
+  });
+
+  it('should keep same-role actor differences bounded and actor-specific', () => {
+    const worldMemory = createCanonicalWorldMemory();
+    const firstInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-immersion',
+      narrativeContext: createNarrativeContext({ worldMemory })
+    });
+    const secondInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-harbor',
+      narrativeContext: createNarrativeContext({ worldMemory: JSON.parse(JSON.stringify(worldMemory)) })
+    });
+
+    const firstPrompt = buildImmersionPrompt(firstInput);
+    const secondPrompt = buildImmersionPrompt(secondInput);
+    const firstContinuity = selectActorContinuity(firstInput);
+    const secondContinuity = selectActorContinuity(secondInput);
+
+    assert.strictEqual(firstContinuity.role, secondContinuity.role);
+    assert.strictEqual(firstContinuity.officeTitle, secondContinuity.officeTitle);
+    assert.notStrictEqual(firstContinuity.actorId, secondContinuity.actorId);
+    assert.notStrictEqual(firstContinuity.speakerId, secondContinuity.speakerId);
+    assert.notDeepStrictEqual(firstPrompt, secondPrompt);
+    assert(firstPrompt.user.includes('"actorId":"mayor-immersion"'));
+    assert(secondPrompt.user.includes('"actorId":"mayor-harbor"'));
+  });
+
   it('should build stable mode-specific prompts from equivalent retrieved world memory', () => {
     const worldMemory = createCanonicalWorldMemory();
     const firstInput = createStructuredImmersionInput({
@@ -530,6 +679,64 @@ describe('Immersion Adapter', () => {
     assert(firstPrompt.user.includes('A salvage plan arrived too late for the day clock.'));
     assert(firstPrompt.user.includes('Order keeps the lamps lit.'));
     assert(!firstPrompt.user.includes('"townSummary"'));
+  });
+
+  it('should keep repeated role-aware prompts and fallback results stable for the same role and memory', async () => {
+    const narrativeContext = createNarrativeContext({
+      worldMemory: createCanonicalWorldMemory()
+    });
+    const firstInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      profileTemplate: captainProfile,
+      pressureOverrides: { threat: 0.72 },
+      narrativeContext
+    });
+    const secondInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      profileTemplate: captainProfile,
+      pressureOverrides: { threat: 0.72 },
+      narrativeContext: JSON.parse(JSON.stringify(narrativeContext))
+    });
+
+    const firstPrompt = buildImmersionPrompt(firstInput);
+    const secondPrompt = buildImmersionPrompt(secondInput);
+    const firstResult = await generateImmersion(firstInput, { env: {} });
+    const secondResult = await generateImmersion(secondInput, { env: {} });
+
+    assert.deepStrictEqual(firstPrompt, secondPrompt);
+    assert.deepStrictEqual(firstResult, secondResult);
+    assert(firstPrompt.system.includes('Role continuity emphasis: captain.'));
+    assert(firstResult.content.includes('Captain captain-immersion'));
+  });
+
+  it('should keep repeated actor-specific prompts and fallback results stable', async () => {
+    const narrativeContext = createNarrativeContext({
+      worldMemory: createCanonicalWorldMemory()
+    });
+    const firstInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'captain-harbor',
+      profileTemplate: captainProfile,
+      pressureOverrides: { threat: 0.72 },
+      narrativeContext
+    });
+    const secondInput = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'captain-harbor',
+      profileTemplate: captainProfile,
+      pressureOverrides: { threat: 0.72 },
+      narrativeContext: JSON.parse(JSON.stringify(narrativeContext))
+    });
+
+    const firstPrompt = buildImmersionPrompt(firstInput);
+    const secondPrompt = buildImmersionPrompt(secondInput);
+    const firstResult = await generateImmersion(firstInput, { env: {} });
+    const secondResult = await generateImmersion(secondInput, { env: {} });
+
+    assert.deepStrictEqual(firstPrompt, secondPrompt);
+    assert.deepStrictEqual(firstResult, secondResult);
+    assert(firstPrompt.system.includes('Actor continuity anchor: Captain captain-harbor'));
+    assert(firstResult.content.includes('Captain captain-harbor'));
   });
 
   it('should fall back safely when narrative context is absent', async () => {
@@ -581,6 +788,68 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(result.sourceSchemas.decisionInspection, 'decision-inspection.v1');
     assert.strictEqual(result.sourceSchemas.executionHandoff, 'execution-handoff.v1');
     assert.strictEqual(result.sourceSchemas.executionResult, 'execution-result.v1');
+    assert.deepStrictEqual(input, snapshotBefore);
+  });
+
+  it('should keep role-aware continuity advisory-only across mayor, captain, warden, and townsfolk paths', async () => {
+    const worldMemory = createCanonicalWorldMemory();
+    const inputs = [
+      createStructuredImmersionInput({
+        artifactType: 'leader-speech',
+        profileTemplate: mayorProfile,
+        narrativeContext: createNarrativeContext({ worldMemory })
+      }),
+      createStructuredImmersionInput({
+        artifactType: 'leader-speech',
+        profileTemplate: captainProfile,
+        pressureOverrides: { threat: 0.72 },
+        narrativeContext: createNarrativeContext({ worldMemory })
+      }),
+      createStructuredImmersionInput({
+        artifactType: 'outcome-blurb',
+        profileTemplate: wardenProfile,
+        pressureOverrides: { scarcity: 0.72, dread: 0.71, hope: 0.22 },
+        narrativeContext: createNarrativeContext({ worldMemory })
+      }),
+      createStructuredImmersionInput({
+        artifactType: 'town-rumor',
+        profileTemplate: mayorProfile,
+        narrativeContext: createNarrativeContext({ worldMemory })
+      })
+    ];
+
+    for (const input of inputs) {
+      const snapshotBefore = JSON.parse(JSON.stringify(input));
+      const result = await generateImmersion(input, { env: {} });
+
+      assert.deepStrictEqual(result.authority, {
+        proposalSelection: false,
+        commandExecution: false,
+        stateMutation: false
+      });
+      assert.strictEqual(result.advisory, true);
+      assert.deepStrictEqual(input, snapshotBefore);
+    }
+  });
+
+  it('should keep actor continuity advisory-only for repeated named officeholders', async () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-harbor',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createCanonicalWorldMemory()
+      })
+    });
+    const snapshotBefore = JSON.parse(JSON.stringify(input));
+
+    const result = await generateImmersion(input, { env: {} });
+
+    assert.deepStrictEqual(result.authority, {
+      proposalSelection: false,
+      commandExecution: false,
+      stateMutation: false
+    });
+    assert.strictEqual(result.advisory, true);
     assert.deepStrictEqual(input, snapshotBefore);
   });
 });
