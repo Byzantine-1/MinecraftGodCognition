@@ -11,8 +11,10 @@ import {
   isValidImmersionProvider,
   isValidNarrativeContext,
   normalizeNarrativeContext,
-  resolveImmersionProvider
+  resolveImmersionProvider,
+  selectWorldMemoryForArtifact
 } from '../src/immersion.js';
+import { WorldMemoryContextType } from '../src/worldMemoryContext.js';
 import { createDefaultSnapshot } from '../src/snapshotSchema.js';
 
 function createNarrativeContext(overrides = {}) {
@@ -54,6 +56,129 @@ function createNarrativeContext(overrides = {}) {
       requiredDisclaimers: ['flavor text is advisory only']
     },
     ...overrides
+  };
+}
+
+function createCanonicalWorldMemory() {
+  return {
+    type: WorldMemoryContextType,
+    schemaVersion: 1,
+    scope: {
+      townId: 'town-immersion',
+      factionId: 'council',
+      chronicleLimit: 3,
+      historyLimit: 4
+    },
+    recentChronicle: [
+      {
+        sourceRecordId: 'chronicle:c_03',
+        entryType: 'project',
+        message: 'Lantern posts rose along the east wall.',
+        at: 300,
+        townId: 'town-immersion',
+        factionId: 'council',
+        sourceRefId: 'pr_wall_east',
+        tags: ['chronicle', 'town:town-immersion', 'type:project']
+      },
+      {
+        sourceRecordId: 'chronicle:c_02',
+        entryType: 'warning',
+        message: 'A quiet ration count unsettled the square.',
+        at: 200,
+        townId: 'town-immersion',
+        factionId: 'council',
+        sourceRefId: 'warning_rations',
+        tags: ['chronicle', 'town:town-immersion', 'type:warning']
+      },
+      {
+        sourceRecordId: 'chronicle:c_01',
+        entryType: 'speech',
+        message: 'The mayor promised timber before frost.',
+        at: 100,
+        townId: 'town-immersion',
+        factionId: 'council',
+        sourceRefId: 'speech_mayor',
+        tags: ['chronicle', 'town:town-immersion', 'type:speech']
+      }
+    ],
+    recentHistory: [
+      {
+        sourceType: 'execution_receipt',
+        handoffId: 'handoff_project',
+        proposalType: 'PROJECT_ADVANCE',
+        command: 'project advance town-immersion wall-east',
+        authorityCommands: ['project advance town-immersion wall-east'],
+        status: 'executed',
+        reasonCode: 'EXECUTED',
+        kind: 'execution_result',
+        at: 400,
+        townId: 'town-immersion',
+        summary: 'East wall repairs advanced by one stage.'
+      },
+      {
+        sourceType: 'execution_receipt',
+        handoffId: 'handoff_salvage',
+        proposalType: 'SALVAGE_PLAN',
+        command: 'salvage initiate town-immersion scarcity',
+        authorityCommands: ['salvage plan town-immersion ruined_hamlet_supplies'],
+        status: 'stale',
+        reasonCode: 'STALE_DECISION_EPOCH',
+        kind: 'execution_result',
+        at: 350,
+        townId: 'town-immersion',
+        summary: 'A salvage plan arrived too late for the day clock.'
+      },
+      {
+        sourceType: 'execution_event',
+        handoffId: 'handoff_project',
+        proposalType: 'PROJECT_ADVANCE',
+        command: 'project advance town-immersion wall-east',
+        authorityCommands: ['project advance town-immersion wall-east'],
+        status: 'executed',
+        reasonCode: 'EXECUTED',
+        kind: 'execution_started',
+        at: 325,
+        townId: 'town-immersion',
+        summary: 'The captain handed the wall order to the engine.'
+      }
+    ],
+    townSummary: {
+      type: 'town-history-summary.v1',
+      schemaVersion: 1,
+      townId: 'town-immersion',
+      chronicleCount: 3,
+      historyCount: 3,
+      lastChronicleAt: 300,
+      lastHistoryAt: 400,
+      hope: 55,
+      dread: 22,
+      activeMajorMissionId: 'mm_watch',
+      recentImpactCount: 2,
+      crierQueueDepth: 1,
+      activeProjectCount: 1,
+      factions: ['council'],
+      executionCounts: {
+        executed: 1,
+        rejected: 0,
+        stale: 1,
+        duplicate: 0,
+        failed: 0
+      }
+    },
+    factionSummary: {
+      type: 'faction-history-summary.v1',
+      schemaVersion: 1,
+      factionId: 'council',
+      towns: ['town-immersion'],
+      chronicleCount: 3,
+      historyCount: 3,
+      lastChronicleAt: 300,
+      lastHistoryAt: 400,
+      hostilityToPlayer: 10,
+      stability: 81,
+      doctrine: 'Order keeps the lamps lit.',
+      rivals: ['smugglers']
+    }
   };
 }
 
@@ -351,6 +476,62 @@ describe('Immersion Adapter', () => {
     assert.deepStrictEqual(formalResult.authority, plainResult.authority);
   });
 
+  it('should shape canonical world memory differently for each immersion mode', () => {
+    const worldMemory = createCanonicalWorldMemory();
+
+    const leaderMemory = selectWorldMemoryForArtifact('leader-speech', worldMemory);
+    const rumorMemory = selectWorldMemoryForArtifact('town-rumor', worldMemory);
+    const chronicleMemory = selectWorldMemoryForArtifact('chronicle-entry', worldMemory);
+    const outcomeMemory = selectWorldMemoryForArtifact('outcome-blurb', worldMemory);
+
+    assert.strictEqual(leaderMemory.recentChronicle.length, 2);
+    assert.strictEqual(leaderMemory.recentHistory.length, 1);
+    assert.strictEqual(leaderMemory.recentHistory[0].status, 'executed');
+    assert.strictEqual(Boolean(leaderMemory.townSummary), true);
+    assert.strictEqual(Boolean(leaderMemory.factionSummary), false);
+
+    assert.strictEqual(rumorMemory.recentChronicle.length, 2);
+    assert.strictEqual(rumorMemory.recentHistory.length, 1);
+    assert.strictEqual(rumorMemory.recentHistory[0].status, 'stale');
+    assert.strictEqual(Boolean(rumorMemory.townSummary), false);
+    assert.strictEqual(Boolean(rumorMemory.factionSummary), true);
+
+    assert.strictEqual(chronicleMemory.recentChronicle.length, 1);
+    assert.strictEqual(chronicleMemory.recentHistory.length, 2);
+    assert.strictEqual(chronicleMemory.recentHistory[0].sourceType, 'execution_receipt');
+    assert.strictEqual(Boolean(chronicleMemory.townSummary), true);
+
+    assert.strictEqual(outcomeMemory.recentChronicle.length, 1);
+    assert.strictEqual(outcomeMemory.recentHistory.length, 2);
+    assert.strictEqual(outcomeMemory.recentHistory[0].summary, 'East wall repairs advanced by one stage.');
+    assert.strictEqual(Boolean(outcomeMemory.townSummary), true);
+  });
+
+  it('should build stable mode-specific prompts from equivalent retrieved world memory', () => {
+    const worldMemory = createCanonicalWorldMemory();
+    const firstInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        worldMemory
+      })
+    });
+    const secondInput = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        worldMemory: JSON.parse(JSON.stringify(worldMemory))
+      })
+    });
+    firstInput.artifactType = 'town-rumor';
+    secondInput.artifactType = 'town-rumor';
+
+    const firstPrompt = buildImmersionPrompt(firstInput);
+    const secondPrompt = buildImmersionPrompt(secondInput);
+
+    assert.deepStrictEqual(firstPrompt, secondPrompt);
+    assert(firstPrompt.system.includes('suggestive details'));
+    assert(firstPrompt.user.includes('A salvage plan arrived too late for the day clock.'));
+    assert(firstPrompt.user.includes('Order keeps the lamps lit.'));
+    assert(!firstPrompt.user.includes('"townSummary"'));
+  });
+
   it('should fall back safely when narrative context is absent', async () => {
     const input = createStructuredImmersionInput({ narrativeContext: undefined });
 
@@ -365,8 +546,28 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(result.authority.commandExecution, false);
   });
 
+  it('should fall back safely when world-memory context is absent from an otherwise valid narrative context', async () => {
+    const input = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext()
+    });
+    input.artifactType = 'leader-speech';
+
+    const prompt = buildImmersionPrompt(input);
+    const result = await generateImmersion(input, { env: {} });
+
+    assert.strictEqual(typeof prompt.system, 'string');
+    assert(!prompt.system.includes('When world memory is present'));
+    assert.strictEqual(result.status, 'fallback');
+    assert(result.content.includes('The council backs'));
+    assert.strictEqual(result.authority.stateMutation, false);
+  });
+
   it('should remain downstream and non-authoritative', async () => {
-    const input = createStructuredImmersionInput();
+    const input = createStructuredImmersionInput({
+      narrativeContext: createNarrativeContext({
+        worldMemory: createCanonicalWorldMemory()
+      })
+    });
     const snapshotBefore = JSON.parse(JSON.stringify(input));
 
     const result = await generateImmersion(input, { env: {} });

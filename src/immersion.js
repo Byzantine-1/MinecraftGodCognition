@@ -38,6 +38,13 @@ const artifactGuidance = Object.freeze({
   'outcome-blurb': 'Write one short narrated outcome blurb describing the attempted or completed action.'
 });
 
+const worldMemoryArtifactGuidance = Object.freeze({
+  'leader-speech': 'When world memory is present, emphasize civic continuity: the town summary, the latest public chronicle lines, and the most recent executed civic result.',
+  'town-rumor': 'When world memory is present, emphasize suggestive details: recent chronicle lines, unresolved or tense history, and faction mood instead of official summaries.',
+  'chronicle-entry': 'When world memory is present, emphasize archival sequence: the latest receipt-grade history first, then the latest chronicle trace.',
+  'outcome-blurb': 'When world memory is present, emphasize the immediate recorded outcome, its recent precedent, and one public memory cue from the town.'
+});
+
 const providerFactories = Object.freeze({
   qwen: createQwenProvider
 });
@@ -503,10 +510,18 @@ export function isValidImmersionInput(input) {
 }
 
 function buildPromptContext(input) {
+  const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
+  const focusedWorldMemory = selectWorldMemoryForArtifact(input.artifactType, narrativeContext?.worldMemory);
+
   return normalizeJsonValue({
     artifactType: input.artifactType,
     worldSummary: input.worldSummary === undefined ? null : input.worldSummary,
-    narrativeContext: normalizeNarrativeContext(input.narrativeContext) ?? null,
+    narrativeContext: narrativeContext
+      ? {
+          ...narrativeContext,
+          ...(focusedWorldMemory ? { worldMemory: focusedWorldMemory } : {})
+        }
+      : null,
     decisionInspection: summarizeDecisionInspection(input.decisionInspection),
     executionHandoff: summarizeExecutionHandoff(input.executionHandoff),
     executionResult: summarizeExecutionResult(input.executionResult)
@@ -568,6 +583,125 @@ function buildCanonSafetyLines(input) {
   return lines;
 }
 
+function createWorldMemoryRecordKey(record) {
+  if (record?.sourceRecordId) return record.sourceRecordId;
+  if (record?.handoffId) return record.handoffId;
+  return stableStringify(record);
+}
+
+function selectWorldMemoryEntries(records, selectors, limit) {
+  const normalizedRecords = Array.isArray(records) ? records : [];
+  const selected = [];
+  const seen = new Set();
+
+  for (const selector of selectors) {
+    for (const record of normalizedRecords) {
+      const key = createWorldMemoryRecordKey(record);
+      if (seen.has(key) || !selector(record)) {
+        continue;
+      }
+      seen.add(key);
+      selected.push(record);
+      if (selected.length >= limit) {
+        return selected;
+      }
+    }
+  }
+
+  return selected;
+}
+
+function buildWorldMemorySubset(worldMemory, {
+  recentChronicle,
+  recentHistory,
+  includeTownSummary,
+  includeFactionSummary
+}) {
+  return normalizeWorldMemoryContext({
+    type: worldMemory.type,
+    schemaVersion: worldMemory.schemaVersion,
+    scope: worldMemory.scope,
+    recentChronicle,
+    recentHistory,
+    ...(includeTownSummary && worldMemory.townSummary ? { townSummary: worldMemory.townSummary } : {}),
+    ...(includeFactionSummary && worldMemory.factionSummary ? { factionSummary: worldMemory.factionSummary } : {})
+  });
+}
+
+export function selectWorldMemoryForArtifact(artifactType, worldMemoryContext) {
+  if (worldMemoryContext === undefined) {
+    return undefined;
+  }
+  if (!ImmersionArtifactType.includes(artifactType)) {
+    throw new Error('Invalid immersion artifact type');
+  }
+
+  const worldMemory = normalizeWorldMemoryContext(worldMemoryContext);
+  const latestChronicle = worldMemory.recentChronicle.slice(0, 2);
+  const latestSingleChronicle = worldMemory.recentChronicle.slice(0, 1);
+
+  if (artifactType === 'leader-speech') {
+    return buildWorldMemorySubset(worldMemory, {
+      recentChronicle: latestChronicle,
+      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
+        entry => entry.status === 'executed' && entry.sourceType === 'execution_receipt',
+        entry => entry.sourceType === 'execution_receipt',
+        () => true
+      ], 1),
+      includeTownSummary: true,
+      includeFactionSummary: false
+    });
+  }
+
+  if (artifactType === 'town-rumor') {
+    return buildWorldMemorySubset(worldMemory, {
+      recentChronicle: latestChronicle,
+      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
+        entry => !['executed', 'duplicate'].includes(entry.status),
+        entry => entry.kind !== 'execution_result',
+        () => true
+      ], 1),
+      includeTownSummary: false,
+      includeFactionSummary: true
+    });
+  }
+
+  if (artifactType === 'chronicle-entry') {
+    return buildWorldMemorySubset(worldMemory, {
+      recentChronicle: latestSingleChronicle,
+      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
+        entry => entry.sourceType === 'execution_receipt',
+        () => true
+      ], 2),
+      includeTownSummary: true,
+      includeFactionSummary: false
+    });
+  }
+
+  return buildWorldMemorySubset(worldMemory, {
+    recentChronicle: latestSingleChronicle,
+    recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
+      entry => entry.kind === 'execution_result' || entry.sourceType === 'execution_receipt',
+      () => true
+    ], 2),
+    includeTownSummary: true,
+    includeFactionSummary: false
+  });
+}
+
+function selectFocusedWorldMemory(input) {
+  const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
+  return selectWorldMemoryForArtifact(input.artifactType, narrativeContext?.worldMemory);
+}
+
+function buildWorldMemoryGuidanceLines(input) {
+  if (!selectFocusedWorldMemory(input)) {
+    return [];
+  }
+
+  return [worldMemoryArtifactGuidance[input.artifactType]];
+}
+
 function buildVoiceGuidanceLines(input) {
   const voiceProfile = selectSpeakerVoiceProfile(input);
   if (!voiceProfile) return [];
@@ -604,6 +738,7 @@ export function buildImmersionPrompt(input) {
     'Keep the response to 2 sentences or fewer.'
   ]
     .concat(buildCanonSafetyLines(input))
+    .concat(buildWorldMemoryGuidanceLines(input))
     .concat(buildVoiceGuidanceLines(input))
     .join(' ');
   const user = [
@@ -703,6 +838,38 @@ function buildVoiceLead(input) {
   return `In a ${voiceProfile.register} ${voiceProfile.style} voice`;
 }
 
+function selectMemoryChronicleMessage(worldMemory) {
+  return worldMemory?.recentChronicle?.[0]?.message ?? null;
+}
+
+function selectMemoryHistorySummary(worldMemory) {
+  return worldMemory?.recentHistory?.[0]?.summary ?? null;
+}
+
+function buildTownMemoryCue(summary) {
+  if (!summary) return null;
+
+  const parts = [];
+  if (summary.activeProjectCount > 0) {
+    parts.push(`${summary.activeProjectCount} active project${summary.activeProjectCount === 1 ? '' : 's'}`);
+  }
+  if (summary.activeMajorMissionId) {
+    parts.push(`mission ${summary.activeMajorMissionId} remains active`);
+  }
+  if (summary.hope !== null && summary.dread !== null) {
+    parts.push(`hope ${summary.hope} and dread ${summary.dread}`);
+  }
+
+  return parts.length > 0 ? parts.slice(0, 2).join('; ') : null;
+}
+
+function buildFactionMemoryCue(summary) {
+  if (!summary) return null;
+  if (summary.doctrine) return summary.doctrine;
+  if (summary.rivals?.length) return `rivalries with ${summary.rivals.join(', ')}`;
+  return summary.factionId ? `the ${summary.factionId} remain a live concern` : null;
+}
+
 function buildFallbackText(input) {
   const townId = selectTownId(input);
   const actorId = selectActorId(input);
@@ -714,20 +881,46 @@ function buildFallbackText(input) {
   const status = selectStatus(input);
   const reasonCode = selectReasonCode(input);
   const voiceLead = buildVoiceLead(input);
+  const worldMemory = selectFocusedWorldMemory(input);
+  const memoryChronicle = selectMemoryChronicleMessage(worldMemory);
+  const memoryHistory = selectMemoryHistorySummary(worldMemory);
+  const townCue = buildTownMemoryCue(worldMemory?.townSummary);
+  const factionCue = buildFactionMemoryCue(worldMemory?.factionSummary);
 
   if (input.artifactType === 'leader-speech') {
-    return `${voiceLead ? `${voiceLead}, ` : ''}${actorId} addresses ${townId}: ${reason} The council backs ${proposalType} via ${command}.`;
+    const followup = memoryChronicle
+      ? `Recent memory holds: ${memoryChronicle}.`
+      : townCue
+        ? `Town memory marks ${townCue}.`
+        : `The council backs ${proposalType} via ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}${actorId} addresses ${townId}: ${reason}. ${followup}`;
   }
 
   if (input.artifactType === 'town-rumor') {
-    return `${voiceLead ? `${voiceLead}, ` : ''}rumor in ${townId}: ${proposalType} is the latest talk after ${reasonTags}. People whisper about ${command}.`;
+    const opener = memoryChronicle ?? `${proposalType} is the latest talk after ${reasonTags}`;
+    const followup = memoryHistory
+      ? `People tie it to ${memoryHistory}.`
+      : factionCue
+        ? `People keep naming ${factionCue}.`
+        : `People whisper about ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}rumor in ${townId}: ${opener}. ${followup}`;
   }
 
   if (input.artifactType === 'chronicle-entry') {
-    return `${voiceLead ? `${voiceLead}, ` : ''}day ${decisionEpoch} in ${townId}: ${proposalType} stands recorded with status ${status}. Command noted: ${command}.`;
+    const opener = memoryHistory ?? `${proposalType} stands recorded with status ${status}`;
+    const followup = memoryChronicle
+      ? `Chronicle remembers: ${memoryChronicle}.`
+      : `Command noted: ${command}.`;
+    return `${voiceLead ? `${voiceLead}, ` : ''}day ${decisionEpoch} in ${townId}: ${opener}. ${followup}`;
   }
 
-  return `${voiceLead ? `${voiceLead}, ` : ''}outcome for ${townId}: ${proposalType} is marked ${status} with code ${reasonCode}. The last recorded command was ${command}.`;
+  const opener = memoryHistory ?? `${proposalType} is marked ${status} with code ${reasonCode}`;
+  const followup = memoryChronicle
+    ? `Public memory still holds ${memoryChronicle}.`
+    : townCue
+      ? `Town memory marks ${townCue}.`
+      : `The last recorded command was ${command}.`;
+  return `${voiceLead ? `${voiceLead}, ` : ''}outcome for ${townId}: ${opener}. ${followup}`;
 }
 
 function buildAuthorityBlock() {
