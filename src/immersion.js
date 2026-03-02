@@ -74,6 +74,80 @@ const officeTitleByRole = Object.freeze({
   townsfolk: 'Townsfolk'
 });
 
+const roleRankingSignals = Object.freeze({
+  [Roles.MAYOR]: Object.freeze({
+    chronicleKeywords: Object.freeze(['civic', 'decree', 'supplies', 'order', 'trade', 'mission', 'market', 'public']),
+    historyKeywords: Object.freeze(['civic', 'decree', 'supplies', 'order', 'trade', 'mission', 'market', 'public']),
+    chronicleEntryTypeBoosts: Object.freeze({ mission: 14, speech: 10, project: 4 }),
+    historyProposalTypeBoosts: Object.freeze({ MAYOR_ACCEPT_MISSION: 16, PROJECT_ADVANCE: 3 }),
+    historyStatusBoosts: Object.freeze({ executed: 5 }),
+    historyKindBoosts: Object.freeze({ execution_result: 3 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 2 })
+  }),
+  [Roles.CAPTAIN]: Object.freeze({
+    chronicleKeywords: Object.freeze(['defense', 'border', 'patrol', 'threat', 'conflict', 'wall', 'guard', 'breach']),
+    historyKeywords: Object.freeze(['defense', 'border', 'patrol', 'threat', 'conflict', 'wall', 'guard', 'project']),
+    chronicleEntryTypeBoosts: Object.freeze({ project: 14, warning: 8 }),
+    historyProposalTypeBoosts: Object.freeze({ PROJECT_ADVANCE: 16 }),
+    historyStatusBoosts: Object.freeze({ executed: 7 }),
+    historyKindBoosts: Object.freeze({ execution_result: 4 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 3 })
+  }),
+  [Roles.WARDEN]: Object.freeze({
+    chronicleKeywords: Object.freeze(['discipline', 'crime', 'gate', 'watch', 'prison', 'ration', 'scarcity', 'salvage', 'supply']),
+    historyKeywords: Object.freeze(['discipline', 'crime', 'gate', 'watch', 'scarcity', 'salvage', 'supply', 'shortage']),
+    chronicleEntryTypeBoosts: Object.freeze({ warning: 14, project: 2 }),
+    historyProposalTypeBoosts: Object.freeze({ SALVAGE_PLAN: 16 }),
+    historyStatusBoosts: Object.freeze({ stale: 9, rejected: 7, failed: 7 }),
+    historyKindBoosts: Object.freeze({ execution_result: 4 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 3 })
+  }),
+  townsfolk: Object.freeze({
+    chronicleKeywords: Object.freeze(['rumor', 'loss', 'fear', 'shortage', 'market', 'daily', 'square', 'whisper', 'quiet']),
+    historyKeywords: Object.freeze(['rumor', 'loss', 'fear', 'shortage', 'market', 'daily', 'whisper', 'late', 'incident']),
+    chronicleEntryTypeBoosts: Object.freeze({ warning: 8, speech: 4, project: 4 }),
+    historyProposalTypeBoosts: Object.freeze({ TOWNSFOLK_TALK: 8, SALVAGE_PLAN: 5 }),
+    historyStatusBoosts: Object.freeze({ stale: 8, rejected: 6, failed: 6, executed: 2 }),
+    historyKindBoosts: Object.freeze({ execution_result: 4, execution_started: -3 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 2, execution_event: 1 })
+  })
+});
+
+const artifactRankingSignals = Object.freeze({
+  'leader-speech': Object.freeze({
+    chronicleKeywords: Object.freeze(['decree', 'civic', 'public', 'reassure', 'order', 'mission']),
+    historyKeywords: Object.freeze(['decree', 'civic', 'public', 'reassure', 'executed', 'mission']),
+    chronicleEntryTypeBoosts: Object.freeze({ speech: 12, mission: 8, project: 4 }),
+    historyStatusBoosts: Object.freeze({ executed: 9 }),
+    historyKindBoosts: Object.freeze({ execution_result: 4 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 4 })
+  }),
+  'town-rumor': Object.freeze({
+    chronicleKeywords: Object.freeze(['gossip', 'incident', 'unease', 'local', 'warning', 'quiet', 'fear', 'market']),
+    historyKeywords: Object.freeze(['gossip', 'incident', 'unease', 'local', 'late', 'stale', 'rejected', 'failed']),
+    chronicleEntryTypeBoosts: Object.freeze({ warning: 10, speech: 3, project: 3 }),
+    historyStatusBoosts: Object.freeze({ stale: 10, rejected: 8, failed: 8, executed: 1 }),
+    historyKindBoosts: Object.freeze({ execution_result: 4, execution_started: -4 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 2 })
+  }),
+  'chronicle-entry': Object.freeze({
+    chronicleKeywords: Object.freeze(['history', 'record', 'public', 'chronicle', 'archive']),
+    historyKeywords: Object.freeze(['history', 'record', 'public', 'chronicle', 'status', 'result']),
+    chronicleEntryTypeBoosts: Object.freeze({ project: 4, mission: 4, warning: 4 }),
+    historyStatusBoosts: Object.freeze({ executed: 7, stale: 7, rejected: 7, failed: 7 }),
+    historyKindBoosts: Object.freeze({ execution_result: 9, execution_started: 1 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 7 })
+  }),
+  'outcome-blurb': Object.freeze({
+    chronicleKeywords: Object.freeze(['result', 'outcome', 'public', 'aftermath', 'consequence']),
+    historyKeywords: Object.freeze(['result', 'outcome', 'aftermath', 'consequence', 'executed', 'stale', 'rejected', 'failed']),
+    chronicleEntryTypeBoosts: Object.freeze({ project: 4, warning: 4, mission: 3 }),
+    historyStatusBoosts: Object.freeze({ executed: 8, stale: 7, rejected: 7, failed: 7 }),
+    historyKindBoosts: Object.freeze({ execution_result: 10 }),
+    historySourceTypeBoosts: Object.freeze({ execution_receipt: 6 })
+  })
+});
+
 const providerFactories = Object.freeze({
   qwen: createQwenProvider
 });
@@ -559,7 +633,7 @@ export function isValidImmersionInput(input) {
 
 function buildPromptContext(input) {
   const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
-  const focusedWorldMemory = selectWorldMemoryForArtifact(input.artifactType, narrativeContext?.worldMemory);
+  const focusedWorldMemory = selectWorldMemoryForImmersionInput(input);
   const actorContinuity = selectActorContinuity(input);
 
   return normalizeJsonValue({
@@ -655,35 +729,47 @@ function buildCanonSafetyLines(input) {
 
 function createWorldMemoryRecordKey(record) {
   if (record?.sourceRecordId) return record.sourceRecordId;
-  if (record?.handoffId) return record.handoffId;
-  return stableStringify(record);
-}
-
-function selectWorldMemoryEntries(records, selectors, limit) {
-  const normalizedRecords = Array.isArray(records) ? records : [];
-  const selected = [];
-  const seen = new Set();
-
-  for (const selector of selectors) {
-    for (const record of normalizedRecords) {
-      const key = createWorldMemoryRecordKey(record);
-      if (seen.has(key) || !selector(record)) {
-        continue;
-      }
-      seen.add(key);
-      selected.push(record);
-      if (selected.length >= limit) {
-        return selected;
-      }
-    }
+  if (record?.handoffId) {
+    return [
+      record.handoffId,
+      record.sourceType ?? '',
+      record.kind ?? '',
+      record.summary ?? ''
+    ].join(':');
   }
-
-  return selected;
+  return stableStringify(record);
 }
 
 function textIncludesAny(value, needles) {
   const haystack = typeof value === 'string' ? value.toLowerCase() : '';
   return needles.some(needle => haystack.includes(needle));
+}
+
+function buildWorldMemorySearchText(parts) {
+  return parts
+    .filter((part) => part !== null && part !== undefined)
+    .flatMap((part) => Array.isArray(part) ? part : [part])
+    .map((part) => String(part).trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function countKeywordHits(text, keywords = []) {
+  if (!text) {
+    return 0;
+  }
+
+  return uniqueStrings(keywords).reduce((count, keyword) => (
+    text.includes(keyword.toLowerCase()) ? count + 1 : count
+  ), 0);
+}
+
+function scoreLookup(boosts, key) {
+  if (!boosts || key === null || key === undefined) {
+    return 0;
+  }
+
+  return Number(boosts[key] ?? 0);
 }
 
 function compareWorldMemoryChronicleEntries(left, right) {
@@ -708,18 +794,147 @@ function compareWorldMemoryHistoryEntries(left, right) {
   ].join(':'));
 }
 
+function buildChronicleRankingText(record) {
+  return buildWorldMemorySearchText([
+    record.entryType,
+    record.message,
+    record.townId,
+    record.factionId,
+    record.sourceRefId,
+    record.tags
+  ]);
+}
+
+function buildHistoryRankingText(record) {
+  return buildWorldMemorySearchText([
+    record.sourceType,
+    record.proposalType,
+    record.command,
+    record.authorityCommands,
+    record.status,
+    record.reasonCode,
+    record.kind,
+    record.townId,
+    record.summary
+  ]);
+}
+
+function scoreChronicleRecord(record, { role, artifactType }) {
+  const roleSignals = role ? roleRankingSignals[role] : null;
+  const artifactSignals = artifactRankingSignals[artifactType];
+  const text = buildChronicleRankingText(record);
+
+  return (
+    countKeywordHits(text, roleSignals?.chronicleKeywords) * 5 +
+    countKeywordHits(text, artifactSignals?.chronicleKeywords) * 4 +
+    scoreLookup(roleSignals?.chronicleEntryTypeBoosts, record.entryType) +
+    scoreLookup(artifactSignals?.chronicleEntryTypeBoosts, record.entryType)
+  );
+}
+
+function scoreHistoryRecord(record, { role, artifactType }) {
+  const roleSignals = role ? roleRankingSignals[role] : null;
+  const artifactSignals = artifactRankingSignals[artifactType];
+  const text = buildHistoryRankingText(record);
+
+  return (
+    countKeywordHits(text, roleSignals?.historyKeywords) * 5 +
+    countKeywordHits(text, artifactSignals?.historyKeywords) * 4 +
+    scoreLookup(roleSignals?.historyProposalTypeBoosts, record.proposalType) +
+    scoreLookup(roleSignals?.historyStatusBoosts, record.status) +
+    scoreLookup(roleSignals?.historyKindBoosts, record.kind) +
+    scoreLookup(roleSignals?.historySourceTypeBoosts, record.sourceType) +
+    scoreLookup(artifactSignals?.historyStatusBoosts, record.status) +
+    scoreLookup(artifactSignals?.historyKindBoosts, record.kind) +
+    scoreLookup(artifactSignals?.historySourceTypeBoosts, record.sourceType)
+  );
+}
+
+function selectWorldMemoryRecencyWeight({ recordKind, artifactType }) {
+  if (recordKind === 'chronicle' && artifactType === 'chronicle-entry') {
+    return 16;
+  }
+
+  return 4;
+}
+
+function rankWorldMemoryRecords(records, {
+  recordKind,
+  role,
+  artifactType
+}) {
+  const normalizedRecords = Array.isArray(records) ? records.slice() : [];
+  const comparator = recordKind === 'chronicle'
+    ? compareWorldMemoryChronicleEntries
+    : compareWorldMemoryHistoryEntries;
+  const recencyWeight = selectWorldMemoryRecencyWeight({
+    recordKind,
+    artifactType
+  });
+  const recencyOrder = [...normalizedRecords].sort(comparator);
+  const recencyBonusByKey = new Map(
+    recencyOrder.map((record, index) => [
+      createWorldMemoryRecordKey(record),
+      (recencyOrder.length - index) * recencyWeight
+    ])
+  );
+
+  return normalizedRecords
+    .map((record, originalIndex) => {
+      const relevanceScore = recordKind === 'chronicle'
+        ? scoreChronicleRecord(record, { role, artifactType })
+        : scoreHistoryRecord(record, { role, artifactType });
+      const recencyScore = recencyBonusByKey.get(createWorldMemoryRecordKey(record)) ?? 0;
+      return {
+        record,
+        originalIndex,
+        totalScore: relevanceScore + recencyScore
+      };
+    })
+    .sort((left, right) => {
+      if (left.totalScore !== right.totalScore) {
+        return right.totalScore - left.totalScore;
+      }
+
+      const canonicalCompare = comparator(left.record, right.record);
+      if (canonicalCompare !== 0) {
+        return canonicalCompare;
+      }
+
+      return left.originalIndex - right.originalIndex;
+    })
+    .map((entry) => entry.record);
+}
+
+function selectRankedWorldMemoryRecords(records, {
+  recordKind,
+  role,
+  artifactType,
+  limit
+}) {
+  if (!Number.isInteger(limit) || limit <= 0) {
+    return [];
+  }
+
+  return rankWorldMemoryRecords(records, {
+    recordKind,
+    role,
+    artifactType
+  }).slice(0, limit);
+}
+
 function buildWorldMemorySubset(worldMemory, {
   recentChronicle,
   recentHistory,
   includeTownSummary,
   includeFactionSummary
 }) {
-  return normalizeWorldMemoryContext({
+  return normalizeJsonValue({
     type: worldMemory.type,
     schemaVersion: worldMemory.schemaVersion,
     scope: worldMemory.scope,
-    recentChronicle: [...recentChronicle].sort(compareWorldMemoryChronicleEntries),
-    recentHistory: [...recentHistory].sort(compareWorldMemoryHistoryEntries),
+    recentChronicle: recentChronicle.map((record) => ({ ...record })),
+    recentHistory: recentHistory.map((record) => ({ ...record })),
     ...(includeTownSummary && worldMemory.townSummary ? { townSummary: worldMemory.townSummary } : {}),
     ...(includeFactionSummary && worldMemory.factionSummary ? { factionSummary: worldMemory.factionSummary } : {})
   });
@@ -734,17 +949,23 @@ export function selectWorldMemoryForArtifact(artifactType, worldMemoryContext) {
   }
 
   const worldMemory = normalizeWorldMemoryContext(worldMemoryContext);
-  const latestChronicle = worldMemory.recentChronicle.slice(0, 2);
-  const latestSingleChronicle = worldMemory.recentChronicle.slice(0, 1);
+  const chronicleLimit = artifactType === 'leader-speech' || artifactType === 'town-rumor' ? 2 : 1;
+  const historyLimit = artifactType === 'leader-speech' || artifactType === 'town-rumor' ? 1 : 2;
 
   if (artifactType === 'leader-speech') {
     return buildWorldMemorySubset(worldMemory, {
-      recentChronicle: latestChronicle,
-      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
-        entry => entry.status === 'executed' && entry.sourceType === 'execution_receipt',
-        entry => entry.sourceType === 'execution_receipt',
-        () => true
-      ], 1),
+      recentChronicle: selectRankedWorldMemoryRecords(worldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role: null,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(worldMemory.recentHistory, {
+        recordKind: 'history',
+        role: null,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: true,
       includeFactionSummary: false
     });
@@ -752,12 +973,18 @@ export function selectWorldMemoryForArtifact(artifactType, worldMemoryContext) {
 
   if (artifactType === 'town-rumor') {
     return buildWorldMemorySubset(worldMemory, {
-      recentChronicle: latestChronicle,
-      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
-        entry => !['executed', 'duplicate'].includes(entry.status),
-        entry => entry.kind !== 'execution_result',
-        () => true
-      ], 1),
+      recentChronicle: selectRankedWorldMemoryRecords(worldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role: null,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(worldMemory.recentHistory, {
+        recordKind: 'history',
+        role: null,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: false,
       includeFactionSummary: true
     });
@@ -765,22 +992,36 @@ export function selectWorldMemoryForArtifact(artifactType, worldMemoryContext) {
 
   if (artifactType === 'chronicle-entry') {
     return buildWorldMemorySubset(worldMemory, {
-      recentChronicle: latestSingleChronicle,
-      recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
-        entry => entry.sourceType === 'execution_receipt',
-        () => true
-      ], 2),
+      recentChronicle: selectRankedWorldMemoryRecords(worldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role: null,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(worldMemory.recentHistory, {
+        recordKind: 'history',
+        role: null,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: true,
       includeFactionSummary: false
     });
   }
 
   return buildWorldMemorySubset(worldMemory, {
-    recentChronicle: latestSingleChronicle,
-    recentHistory: selectWorldMemoryEntries(worldMemory.recentHistory, [
-      entry => entry.kind === 'execution_result' || entry.sourceType === 'execution_receipt',
-      () => true
-    ], 2),
+    recentChronicle: selectRankedWorldMemoryRecords(worldMemory.recentChronicle, {
+      recordKind: 'chronicle',
+      role: null,
+      artifactType,
+      limit: chronicleLimit
+    }),
+    recentHistory: selectRankedWorldMemoryRecords(worldMemory.recentHistory, {
+      recordKind: 'history',
+      role: null,
+      artifactType,
+      limit: historyLimit
+    }),
     includeTownSummary: true,
     includeFactionSummary: false
   });
@@ -804,16 +1045,18 @@ export function selectWorldMemoryForRole(role, artifactType, worldMemoryContext)
 
   if (role === Roles.MAYOR) {
     return buildWorldMemorySubset(sourceWorldMemory, {
-      recentChronicle: selectWorldMemoryEntries(sourceWorldMemory.recentChronicle, [
-        record => ['mission', 'speech'].includes(record.entryType),
-        record => record.entryType === 'project',
-        () => true
-      ], chronicleLimit),
-      recentHistory: selectWorldMemoryEntries(sourceWorldMemory.recentHistory, [
-        record => record.proposalType === 'MAYOR_ACCEPT_MISSION',
-        record => record.status === 'executed',
-        () => true
-      ], historyLimit),
+      recentChronicle: selectRankedWorldMemoryRecords(sourceWorldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(sourceWorldMemory.recentHistory, {
+        recordKind: 'history',
+        role,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: true,
       includeFactionSummary: false
     });
@@ -821,16 +1064,18 @@ export function selectWorldMemoryForRole(role, artifactType, worldMemoryContext)
 
   if (role === Roles.CAPTAIN) {
     return buildWorldMemorySubset(sourceWorldMemory, {
-      recentChronicle: selectWorldMemoryEntries(sourceWorldMemory.recentChronicle, [
-        record => record.entryType === 'project',
-        record => record.entryType === 'warning',
-        () => true
-      ], chronicleLimit),
-      recentHistory: selectWorldMemoryEntries(sourceWorldMemory.recentHistory, [
-        record => record.proposalType === 'PROJECT_ADVANCE',
-        record => record.status === 'executed',
-        () => true
-      ], historyLimit),
+      recentChronicle: selectRankedWorldMemoryRecords(sourceWorldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(sourceWorldMemory.recentHistory, {
+        recordKind: 'history',
+        role,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: true,
       includeFactionSummary: false
     });
@@ -838,31 +1083,36 @@ export function selectWorldMemoryForRole(role, artifactType, worldMemoryContext)
 
   if (role === Roles.WARDEN) {
     return buildWorldMemorySubset(sourceWorldMemory, {
-      recentChronicle: selectWorldMemoryEntries(sourceWorldMemory.recentChronicle, [
-        record => record.entryType === 'warning',
-        record => textIncludesAny(record.message, ['ration', 'scarcity', 'salvage', 'supply']),
-        () => true
-      ], chronicleLimit),
-      recentHistory: selectWorldMemoryEntries(sourceWorldMemory.recentHistory, [
-        record => record.proposalType === 'SALVAGE_PLAN',
-        record => ['stale', 'rejected', 'failed'].includes(record.status)
-      ], historyLimit),
+      recentChronicle: selectRankedWorldMemoryRecords(sourceWorldMemory.recentChronicle, {
+        recordKind: 'chronicle',
+        role,
+        artifactType,
+        limit: chronicleLimit
+      }),
+      recentHistory: selectRankedWorldMemoryRecords(sourceWorldMemory.recentHistory, {
+        recordKind: 'history',
+        role,
+        artifactType,
+        limit: historyLimit
+      }),
       includeTownSummary: true,
       includeFactionSummary: false
     });
   }
 
   return buildWorldMemorySubset(sourceWorldMemory, {
-    recentChronicle: selectWorldMemoryEntries(sourceWorldMemory.recentChronicle, [
-      () => true
-    ], chronicleLimit),
-    recentHistory: selectWorldMemoryEntries(sourceWorldMemory.recentHistory, [
-      record => artifactType === 'town-rumor'
-        ? ['stale', 'rejected', 'failed'].includes(record.status)
-        : !['duplicate'].includes(record.status) && record.kind !== 'execution_started',
-      record => !['duplicate'].includes(record.status) && record.kind !== 'execution_started',
-      () => true
-    ], historyLimit),
+    recentChronicle: selectRankedWorldMemoryRecords(sourceWorldMemory.recentChronicle, {
+      recordKind: 'chronicle',
+      role,
+      artifactType,
+      limit: chronicleLimit
+    }),
+    recentHistory: selectRankedWorldMemoryRecords(sourceWorldMemory.recentHistory, {
+      recordKind: 'history',
+      role,
+      artifactType,
+      limit: historyLimit
+    }),
     includeTownSummary: false,
     includeFactionSummary: Boolean(sourceWorldMemory.factionSummary)
   });
@@ -905,6 +1155,14 @@ function selectMemoryRole(input) {
 function selectFocusedWorldMemory(input) {
   const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
   return selectWorldMemoryForRole(selectMemoryRole(input), input.artifactType, narrativeContext?.worldMemory);
+}
+
+export function selectWorldMemoryForImmersionInput(input) {
+  if (!ImmersionArtifactType.includes(input.artifactType)) {
+    throw new Error('Invalid immersion artifact type');
+  }
+
+  return selectFocusedWorldMemory(input);
 }
 
 function buildWorldMemoryGuidanceLines(input) {

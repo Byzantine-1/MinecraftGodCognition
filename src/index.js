@@ -68,6 +68,7 @@ export {
   resolveImmersionProvider,
   selectActorContinuity,
   selectWorldMemoryForArtifact,
+  selectWorldMemoryForImmersionInput,
   selectWorldMemoryForRole
 } from './immersion.js';
 export {

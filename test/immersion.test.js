@@ -14,6 +14,7 @@ import {
   resolveImmersionProvider,
   selectActorContinuity,
   selectWorldMemoryForArtifact,
+  selectWorldMemoryForImmersionInput,
   selectWorldMemoryForRole
 } from '../src/immersion.js';
 import { WorldMemoryContextType } from '../src/worldMemoryContext.js';
@@ -222,6 +223,48 @@ function createCanonicalWorldMemory() {
       doctrine: 'Order keeps the lamps lit.',
       rivals: ['smugglers']
     }
+  };
+}
+
+function createRankingWorldMemory() {
+  const worldMemory = createCanonicalWorldMemory();
+
+  return {
+    ...worldMemory,
+    scope: {
+      ...worldMemory.scope,
+      chronicleLimit: 4,
+      historyLimit: 5
+    },
+    recentChronicle: [
+      {
+        sourceRecordId: 'chronicle:c_04',
+        entryType: 'speech',
+        message: 'The harvest choir praised the fine weather at noon.',
+        at: 500,
+        townId: 'town-immersion',
+        factionId: 'council',
+        sourceRefId: 'speech_harvest',
+        tags: ['chronicle', 'town:town-immersion', 'type:speech']
+      },
+      ...worldMemory.recentChronicle
+    ],
+    recentHistory: [
+      {
+        sourceType: 'execution_receipt',
+        handoffId: 'handoff_trade',
+        proposalType: 'MAYOR_ACCEPT_MISSION',
+        command: 'mission accept town-immersion sq-market',
+        authorityCommands: ['mayor talk town-immersion', 'mayor accept town-immersion'],
+        status: 'executed',
+        reasonCode: 'EXECUTED',
+        kind: 'execution_result',
+        at: 420,
+        townId: 'town-immersion',
+        summary: 'A market caravan accord was accepted before dusk.'
+      },
+      ...worldMemory.recentHistory
+    ]
   };
 }
 
@@ -587,6 +630,97 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(townsfolkMemory.recentHistory[0].kind, 'execution_result');
   });
 
+  it('should rank more role-relevant world-memory items ahead of merely newer ones', () => {
+    const worldMemory = createRankingWorldMemory();
+
+    const captainMemory = selectWorldMemoryForRole('captain', 'leader-speech', worldMemory);
+    const mayorMemory = selectWorldMemoryForRole('mayor', 'leader-speech', worldMemory);
+
+    assert.strictEqual(captainMemory.recentChronicle[0].sourceRecordId, 'chronicle:c_03');
+    assert.strictEqual(captainMemory.recentChronicle[0].message, 'Lantern posts rose along the east wall.');
+    assert.strictEqual(mayorMemory.recentHistory[0].handoffId, 'handoff_trade');
+    assert.strictEqual(mayorMemory.recentHistory[0].summary, 'A market caravan accord was accepted before dusk.');
+  });
+
+  it('should change world-memory ranking deterministically when the artifact mode changes', () => {
+    const worldMemory = createRankingWorldMemory();
+
+    const leaderMemory = selectWorldMemoryForArtifact('leader-speech', worldMemory);
+    const rumorMemory = selectWorldMemoryForArtifact('town-rumor', worldMemory);
+    const chronicleMemory = selectWorldMemoryForRole('captain', 'chronicle-entry', worldMemory);
+
+    assert.strictEqual(leaderMemory.recentHistory[0].handoffId, 'handoff_trade');
+    assert.strictEqual(rumorMemory.recentHistory[0].handoffId, 'handoff_salvage');
+    assert.strictEqual(chronicleMemory.recentChronicle.length, 1);
+    assert.strictEqual(chronicleMemory.recentChronicle[0].sourceRecordId, 'chronicle:c_03');
+  });
+
+  it('should select the same ranked world-memory slice for the same immersion input every run', () => {
+    const worldMemory = createRankingWorldMemory();
+    const input = createStructuredImmersionInput({
+      artifactType: 'chronicle-entry',
+      actorId: 'captain-harbor',
+      profileTemplate: captainProfile,
+      narrativeContext: createNarrativeContext({ worldMemory })
+    });
+
+    const firstSelection = selectWorldMemoryForImmersionInput(input);
+    const secondSelection = selectWorldMemoryForImmersionInput(JSON.parse(JSON.stringify(input)));
+
+    assert.deepStrictEqual(firstSelection, secondSelection);
+    assert.strictEqual(firstSelection.recentChronicle.length, 1);
+    assert.strictEqual(firstSelection.recentChronicle[0].sourceRecordId, 'chronicle:c_03');
+    assert.strictEqual(firstSelection.recentHistory[0].handoffId, 'handoff_project');
+  });
+
+  it('should use the same ranked world-memory slice for provider-backed and fallback prompt paths', async () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'chronicle-entry',
+      actorId: 'captain-harbor',
+      profileTemplate: captainProfile,
+      narrativeContext: createNarrativeContext({
+        worldMemory: createRankingWorldMemory()
+      })
+    });
+    const selectedWorldMemory = selectWorldMemoryForImmersionInput(input);
+    const prompt = buildImmersionPrompt(input);
+    let requestBody = null;
+
+    const providerResult = await generateImmersion(input, {
+      env: {
+        LLM_PROVIDER: 'qwen',
+        LLM_API_KEY: 'test-key',
+        LLM_BASE_URL: 'https://llm.example/v1',
+        LLM_MODEL: 'qwen-max'
+      },
+      fetchImpl: async (_url, init) => {
+        requestBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          async json() {
+            return {
+              choices: [
+                {
+                  message: {
+                    content: 'The captain marked the wall work in the record.'
+                  }
+                }
+              ]
+            };
+          }
+        };
+      }
+    });
+    const fallbackResult = await generateImmersion(input, { env: {} });
+
+    assert.deepStrictEqual(requestBody.messages[1].content, prompt.user);
+    assert.strictEqual(providerResult.prompt.hash, prompt.promptHash);
+    assert.strictEqual(fallbackResult.prompt.hash, prompt.promptHash);
+    assert(prompt.user.includes(selectedWorldMemory.recentChronicle[0].message));
+    assert(prompt.user.includes(selectedWorldMemory.recentHistory[0].summary));
+    assert(!prompt.user.includes('The harvest choir praised the fine weather at noon.'));
+  });
+
   it('should keep role-shaped memory slices consistent with the same shared canonical payload', () => {
     const worldMemory = createCanonicalWorldMemory();
     const roles = [
@@ -627,6 +761,26 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(firstContinuity.speakerId, 'mayor-immersion');
     assert.strictEqual(typeof firstContinuity.recentConcern, 'string');
     assert(firstContinuity.displayName.includes('Mayor mayor-immersion'));
+  });
+
+  it('should keep actor continuity stable after ranked memory selection changes', () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-harbor',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createRankingWorldMemory()
+      })
+    });
+
+    const firstSelection = selectWorldMemoryForImmersionInput(input);
+    const secondSelection = selectWorldMemoryForImmersionInput(JSON.parse(JSON.stringify(input)));
+    const firstContinuity = selectActorContinuity(input);
+    const secondContinuity = selectActorContinuity(JSON.parse(JSON.stringify(input)));
+
+    assert.deepStrictEqual(firstSelection, secondSelection);
+    assert.deepStrictEqual(firstContinuity, secondContinuity);
+    assert.strictEqual(firstContinuity.role, 'mayor');
+    assert.strictEqual(firstContinuity.speakerId, 'mayor-harbor');
   });
 
   it('should keep same-role actor differences bounded and actor-specific', () => {
@@ -789,6 +943,37 @@ describe('Immersion Adapter', () => {
     assert.strictEqual(result.sourceSchemas.executionHandoff, 'execution-handoff.v1');
     assert.strictEqual(result.sourceSchemas.executionResult, 'execution-result.v1');
     assert.deepStrictEqual(input, snapshotBefore);
+  });
+
+  it('should keep ranked world-memory slices canonical and free of execution authority leakage', async () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'chronicle-entry',
+      actorId: 'captain-harbor',
+      profileTemplate: captainProfile,
+      narrativeContext: createNarrativeContext({
+        worldMemory: createRankingWorldMemory()
+      })
+    });
+    const selectedWorldMemory = selectWorldMemoryForImmersionInput(input);
+    const result = await generateImmersion(input, { env: {} });
+
+    assert.deepStrictEqual(Object.keys(selectedWorldMemory).sort(), [
+      'recentChronicle',
+      'recentHistory',
+      'schemaVersion',
+      'scope',
+      'townSummary',
+      'type'
+    ]);
+    assert(selectedWorldMemory.recentChronicle.every(entry => !('totalScore' in entry)));
+    assert(selectedWorldMemory.recentHistory.every(entry => !('totalScore' in entry)));
+    assert.strictEqual('executionRequirements' in selectedWorldMemory, false);
+    assert.strictEqual('authority' in selectedWorldMemory, false);
+    assert.deepStrictEqual(result.authority, {
+      proposalSelection: false,
+      commandExecution: false,
+      stateMutation: false
+    });
   });
 
   it('should keep role-aware continuity advisory-only across mayor, captain, warden, and townsfolk paths', async () => {
