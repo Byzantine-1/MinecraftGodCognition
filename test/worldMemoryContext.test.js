@@ -21,14 +21,15 @@ import {
 import {
   createNarrativeContextWithWorldMemory,
   isValidWorldMemoryContext,
-  normalizeWorldMemoryContext
+  normalizeWorldMemoryContext,
+  parseWorldMemoryContextLine
 } from '../src/worldMemoryContext.js';
 import { createDefaultSnapshot } from '../src/snapshotSchema.js';
 
 const { createExecutionStore, createMemoryExecutionPersistence, createSqliteExecutionPersistence } = engineExecutionStoreModule;
 const { createGodCommandService } = engineGodCommandsModule;
 const { createMemoryStore } = engineMemoryModule;
-const { createWorldMemoryContext } = engineWorldMemoryContextModule;
+const { createWorldMemoryContextForRequest, createWorldMemoryRequest } = engineWorldMemoryContextModule;
 const { createAuthoritativeSnapshotProjection } = engineSnapshotProjectionModule;
 const { createExecutionAdapter } = engineExecutionAdapterModule;
 
@@ -270,21 +271,21 @@ describe('World Memory Narrative Context', () => {
 
     await seedEngineWorldMemory(memoryContext);
     await seedEngineWorldMemory(sqliteContext);
+    const request = createWorldMemoryRequest({
+      townId: 'alpha',
+      factionId: 'iron_pact',
+      chronicleLimit: 2,
+      historyLimit: 3
+    });
 
-    const memoryWorldMemory = createWorldMemoryContext({
+    const memoryWorldMemory = parseWorldMemoryContextLine(JSON.stringify(createWorldMemoryContextForRequest({
       executionStore: memoryContext.executionStore,
-      townId: 'alpha',
-      factionId: 'iron_pact',
-      chronicleLimit: 2,
-      historyLimit: 3
-    });
-    const sqliteWorldMemory = createWorldMemoryContext({
+      request
+    })));
+    const sqliteWorldMemory = parseWorldMemoryContextLine(JSON.stringify(createWorldMemoryContextForRequest({
       executionStore: sqliteContext.executionStore,
-      townId: 'alpha',
-      factionId: 'iron_pact',
-      chronicleLimit: 2,
-      historyLimit: 3
-    });
+      request
+    })));
 
     assert.strictEqual(isValidWorldMemoryContext(memoryWorldMemory), true);
     assert.strictEqual(isValidWorldMemoryContext(sqliteWorldMemory), true);
@@ -294,16 +295,42 @@ describe('World Memory Narrative Context', () => {
     );
   });
 
-  it('should enrich immersion prompt context with real retrieved history while remaining advisory-only', async () => {
+  it('should parse canonical engine world-memory payload lines directly', async () => {
     const engineContext = createEngineContext('memory');
     await seedEngineWorldMemory(engineContext);
-    const worldMemory = createWorldMemoryContext({
-      executionStore: engineContext.executionStore,
+    const request = createWorldMemoryRequest({
       townId: 'alpha',
       factionId: 'iron_pact',
       chronicleLimit: 2,
       historyLimit: 3
     });
+    const line = JSON.stringify(createWorldMemoryContextForRequest({
+      executionStore: engineContext.executionStore,
+      request
+    }));
+
+    const parsed = parseWorldMemoryContextLine(line);
+
+    assert.strictEqual(isValidWorldMemoryContext(parsed), true);
+    assert.strictEqual(parsed.scope.townId, 'alpha');
+    assert.strictEqual(parsed.recentChronicle.length, 2);
+    assert.strictEqual(parsed.recentHistory.length, 3);
+    assert.strictEqual(parseWorldMemoryContextLine('not json'), null);
+  });
+
+  it('should enrich immersion prompt context with real retrieved history while remaining advisory-only', async () => {
+    const engineContext = createEngineContext('memory');
+    await seedEngineWorldMemory(engineContext);
+    const request = createWorldMemoryRequest({
+      townId: 'alpha',
+      factionId: 'iron_pact',
+      chronicleLimit: 2,
+      historyLimit: 3
+    });
+    const worldMemory = parseWorldMemoryContextLine(JSON.stringify(createWorldMemoryContextForRequest({
+      executionStore: engineContext.executionStore,
+      request
+    })));
 
     const narrativeContext = createNarrativeContextWithWorldMemory({
       narrativeState: {

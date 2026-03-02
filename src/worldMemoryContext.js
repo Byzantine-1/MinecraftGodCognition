@@ -298,6 +298,25 @@ export function normalizeWorldMemoryContext(value) {
   };
 }
 
+export function parseWorldMemoryContextLine(line) {
+  if (typeof line !== 'string') return null;
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{')) return null;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!isValidWorldMemoryContext(parsed)) {
+    return null;
+  }
+
+  return normalizeWorldMemoryContext(parsed);
+}
+
 export function createNarrativeContextWithWorldMemory(narrativeContext = {}, worldMemory) {
   if (narrativeContext === undefined) {
     return worldMemory === undefined

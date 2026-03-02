@@ -72,6 +72,7 @@ export {
   MaxWorldMemoryChronicleRecords,
   MaxWorldMemoryHistoryRecords,
   normalizeWorldMemoryContext,
+  parseWorldMemoryContextLine,
   WorldMemoryContextSchemaVersion,
   WorldMemoryContextType
 } from './worldMemoryContext.js';
