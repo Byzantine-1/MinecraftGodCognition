@@ -451,7 +451,9 @@ function summarizeExecutionResult(result) {
   if (!result) return null;
 
   return {
+    type: result.type,
     schemaVersion: result.schemaVersion,
+    executionId: result.executionId,
     resultId: result.resultId,
     proposalId: result.proposalId,
     snapshotHash: result.snapshotHash,
@@ -609,7 +611,7 @@ function buildSourceSchemas(input) {
   return {
     decisionInspection: input.decisionInspection?.schemaVersion ?? null,
     executionHandoff: input.executionHandoff?.schemaVersion ?? null,
-    executionResult: input.executionResult?.schemaVersion ?? null
+    executionResult: input.executionResult?.type ?? input.executionResult?.schemaVersion ?? null
   };
 }
 

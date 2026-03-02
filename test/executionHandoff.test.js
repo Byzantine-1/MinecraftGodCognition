@@ -112,26 +112,83 @@ describe('Execution Handoff Contract', () => {
       }
     });
 
-    assert.strictEqual(first.schemaVersion, SchemaVersion.EXECUTION_RESULT);
+    assert.strictEqual(first.type, SchemaVersion.EXECUTION_RESULT);
+    assert.strictEqual(first.schemaVersion, 1);
+    assert.strictEqual(first.executionId, second.executionId);
     assert.strictEqual(first.resultId, second.resultId);
     assert.deepStrictEqual(first, second);
     assert.deepStrictEqual(Object.keys(first).sort(), [
       'accepted',
+      'actorId',
       'command',
       'decisionEpoch',
       'evaluation',
+      'executionId',
       'executed',
       'handoffId',
       'idempotencyKey',
       'proposalId',
+      'proposalType',
       'reasonCode',
       'resultId',
       'schemaVersion',
       'snapshotHash',
       'status',
+      'townId',
+      'type',
       'worldState'
     ].sort());
+    assert.strictEqual(first.executionId, first.resultId);
     assert(isValidExecutionResult(first));
+  });
+
+  it('should preserve optional authority commands and embodiment metadata', () => {
+    const proposal = createMayorProposal();
+    const handoff = createExecutionHandoff(proposal);
+    const result = createExecutionResult(handoff, {
+      authorityCommands: ['mayor talk town-1', 'mayor accept town-1'],
+      embodiment: {
+        backendHint: 'mineflayer',
+        actions: [
+          {
+            type: 'speech.say',
+            text: 'Orders stand.'
+          }
+        ]
+      },
+      status: 'executed',
+      accepted: true,
+      executed: true,
+      reasonCode: 'EXECUTED',
+      preconditions: {
+        evaluated: true,
+        passed: true,
+        failures: []
+      },
+      staleCheck: {
+        evaluated: true,
+        passed: true,
+        actualSnapshotHash: proposal.snapshotHash,
+        actualDecisionEpoch: proposal.decisionEpoch
+      },
+      duplicateCheck: {
+        evaluated: true,
+        duplicate: false,
+        duplicateOf: null
+      }
+    });
+
+    assert.deepStrictEqual(result.authorityCommands, ['mayor talk town-1', 'mayor accept town-1']);
+    assert.deepStrictEqual(result.embodiment, {
+      backendHint: 'mineflayer',
+      actions: [
+        {
+          type: 'speech.say',
+          text: 'Orders stand.'
+        }
+      ]
+    });
+    assert(isValidExecutionResult(result));
   });
 
   it('should reject inconsistent execution states', () => {

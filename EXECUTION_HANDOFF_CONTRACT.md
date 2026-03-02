@@ -102,14 +102,22 @@ Rules:
 
 ```json
 {
-  "schemaVersion": "execution-result.v1",
+  "type": "execution-result.v1",
+  "schemaVersion": 1,
+  "executionId": "result_<sha256>",
   "resultId": "result_<sha256>",
   "handoffId": "handoff_<sha256>",
   "proposalId": "proposal_<sha256>",
   "idempotencyKey": "proposal_<sha256>",
   "snapshotHash": "<sha256>",
   "decisionEpoch": 15,
+  "actorId": "mayor-immersion",
+  "townId": "alpha",
+  "proposalType": "PROJECT_ADVANCE",
   "command": "project advance town-threatened wall-perimeter",
+  "authorityCommands": [
+    "project advance alpha wall-perimeter"
+  ],
   "status": "executed",
   "accepted": true,
   "executed": true,
@@ -133,8 +141,12 @@ Rules:
     }
   },
   "worldState": {
-    "postExecutionSnapshotHash": "<sha256>",
-    "postExecutionDecisionEpoch": 16
+    "postExecutionSnapshotHash": null,
+    "postExecutionDecisionEpoch": 15
+  },
+  "embodiment": {
+    "backendHint": "mineflayer",
+    "actions": []
   }
 }
 ```
@@ -161,18 +173,29 @@ Rules:
 
 ### Result Identity
 
-- `resultId` is a deterministic SHA-256 hash of `handoffId`, status, booleans, reason code, evaluation block, and optional `worldState`
-- repeated construction of the same result payload yields the same `resultId`
+- `type` is the canonical wire contract id and must equal `execution-result.v1`
+- `schemaVersion` is the numeric wire revision for that type and must equal `1`
+- `executionId` is the canonical execution identifier for downstream consumers
+- `resultId` is a compatibility alias and must equal `executionId`
+- repeated construction of the same result payload yields the same `executionId` / `resultId`
+
+### Authority Mapping
+
+- `command` remains the advisory command text carried by cognition
+- `authorityCommands` records the authoritative engine command(s) actually applied
+- multi-step translations are allowed when required to bridge advisory intent onto real engine operations
+- downstream embodiment is optional and must stay non-authoritative; omit `embodiment` or provide an empty `actions` array when no body action is required
 
 ## Recommended Engine Behavior
 
 1. Validate `execution-handoff.v1`.
 2. Check `idempotencyKey`.
 3. Evaluate stale state from `expectedSnapshotHash` / `expectedDecisionEpoch`.
-4. Evaluate advisory preconditions against authoritative world state.
-5. Accept or reject the command.
-6. If accepted, attempt execution.
-7. Return `execution-result.v1`.
+4. Translate the advisory proposal intent onto explicit authoritative engine command(s).
+5. Evaluate advisory preconditions against authoritative world state.
+6. Accept or reject the command.
+7. If accepted, attempt execution.
+8. Return `execution-result.v1`.
 
 ## Local Harness
 
@@ -213,10 +236,9 @@ The harness never executes the command. For successful execution simulation, it 
 
 ## Intentionally Deferred
 
-- transport protocol between cognition and world engine
 - authentication and authorization
 - dedupe retention window
-- multi-command transactions
+- authoritative town-id normalization policy
 - partial execution semantics
 - rollback behavior
 - full post-state snapshot transport

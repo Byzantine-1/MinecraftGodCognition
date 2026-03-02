@@ -7,6 +7,8 @@ const handoffIdPattern = /^handoff_[0-9a-f]{64}$/;
 const resultIdPattern = /^result_[0-9a-f]{64}$/;
 const hashPattern = /^[0-9a-f]{64}$/;
 const proposalIdPattern = /^proposal_[0-9a-f]{64}$/;
+const executionResultType = SchemaVersion.EXECUTION_RESULT;
+const executionResultSchemaVersion = 1;
 
 export const ExecutionStatus = Object.freeze([
   'executed',
@@ -102,6 +104,24 @@ function isValidWorldState(worldState) {
   }
   if (worldState.postExecutionDecisionEpoch !== null && (!Number.isInteger(worldState.postExecutionDecisionEpoch) || worldState.postExecutionDecisionEpoch < 0)) {
     return false;
+  }
+  return true;
+}
+
+function isValidAuthorityCommands(authorityCommands) {
+  if (authorityCommands === undefined) return true;
+  return Array.isArray(authorityCommands) && authorityCommands.every(command => typeof command === 'string' && command.length > 0);
+}
+
+function isValidEmbodimentBlock(embodiment) {
+  if (embodiment === undefined) return true;
+  if (!embodiment || typeof embodiment !== 'object' || Array.isArray(embodiment)) return false;
+  if ('backendHint' in embodiment && embodiment.backendHint !== null && (typeof embodiment.backendHint !== 'string' || embodiment.backendHint.length === 0)) {
+    return false;
+  }
+  if ('actions' in embodiment) {
+    if (!Array.isArray(embodiment.actions)) return false;
+    if (!embodiment.actions.every(action => action && typeof action === 'object' && !Array.isArray(action))) return false;
   }
   return true;
 }
@@ -236,14 +256,24 @@ export function createExecutionResult(handoff, outcome) {
   };
 
   const result = {
-    schemaVersion: SchemaVersion.EXECUTION_RESULT,
+    type: executionResultType,
+    schemaVersion: executionResultSchemaVersion,
+    executionId: '',
     resultId: '',
     handoffId: handoff.handoffId,
     proposalId: handoff.proposalId,
     idempotencyKey: handoff.idempotencyKey,
     snapshotHash: handoff.snapshotHash,
     decisionEpoch: handoff.decisionEpoch,
+    actorId: handoff.proposal.actorId,
+    townId: handoff.proposal.townId,
+    proposalType: handoff.proposal.type,
     command: handoff.command,
+    ...(hasOwn(outcome, 'authorityCommands')
+      ? {
+          authorityCommands: [...(outcome.authorityCommands || [])]
+        }
+      : {}),
     status: outcome.status,
     accepted: outcome.accepted,
     executed: outcome.executed,
@@ -254,6 +284,14 @@ export function createExecutionResult(handoff, outcome) {
           worldState: {
             postExecutionSnapshotHash: outcome.worldState?.postExecutionSnapshotHash ?? null,
             postExecutionDecisionEpoch: outcome.worldState?.postExecutionDecisionEpoch ?? null
+          }
+        }
+      : {}),
+    ...(hasOwn(outcome, 'embodiment')
+      ? {
+          embodiment: {
+            ...(outcome.embodiment?.backendHint === undefined ? {} : { backendHint: outcome.embodiment?.backendHint ?? null }),
+            ...(Array.isArray(outcome.embodiment?.actions) ? { actions: outcome.embodiment.actions } : {})
           }
         }
       : {})
@@ -268,16 +306,32 @@ export function createExecutionResult(handoff, outcome) {
   if (!isValidWorldState(result.worldState)) {
     throw new Error('Invalid execution world state');
   }
+  if (!isValidAuthorityCommands(result.authorityCommands)) {
+    throw new Error('Invalid authority commands');
+  }
+  if (!isValidEmbodimentBlock(result.embodiment)) {
+    throw new Error('Invalid execution embodiment block');
+  }
 
   result.resultId = `result_${hashValue({
+    type: result.type,
+    schemaVersion: result.schemaVersion,
     handoffId: result.handoffId,
+    proposalId: result.proposalId,
+    actorId: result.actorId,
+    townId: result.townId,
+    proposalType: result.proposalType,
+    command: result.command,
+    authorityCommands: result.authorityCommands,
     status: result.status,
     accepted: result.accepted,
     executed: result.executed,
     reasonCode: result.reasonCode,
     evaluation: result.evaluation,
-    worldState: result.worldState
+    worldState: result.worldState,
+    embodiment: result.embodiment
   })}`;
+  result.executionId = result.resultId;
 
   return result;
 }
@@ -289,26 +343,43 @@ export function createExecutionResult(handoff, outcome) {
  */
 export function isValidExecutionResult(result) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return false;
-  if (result.schemaVersion !== SchemaVersion.EXECUTION_RESULT) return false;
+  if (result.type !== executionResultType) return false;
+  if (result.schemaVersion !== executionResultSchemaVersion) return false;
+  if (typeof result.executionId !== 'string' || !resultIdPattern.test(result.executionId)) return false;
   if (typeof result.resultId !== 'string' || !resultIdPattern.test(result.resultId)) return false;
+  if (result.executionId !== result.resultId) return false;
   if (typeof result.handoffId !== 'string' || !handoffIdPattern.test(result.handoffId)) return false;
   if (typeof result.proposalId !== 'string' || !proposalIdPattern.test(result.proposalId)) return false;
   if (result.idempotencyKey !== result.proposalId) return false;
   if (typeof result.snapshotHash !== 'string' || !hashPattern.test(result.snapshotHash)) return false;
   if (!Number.isInteger(result.decisionEpoch) || result.decisionEpoch < 0) return false;
+  if (typeof result.actorId !== 'string' || result.actorId.length === 0) return false;
+  if (typeof result.townId !== 'string' || result.townId.length === 0) return false;
+  if (typeof result.proposalType !== 'string' || result.proposalType.length === 0) return false;
   if (typeof result.command !== 'string' || result.command.length === 0) return false;
+  if (!isValidAuthorityCommands(result.authorityCommands)) return false;
   if (!validateExecutionState(result)) return false;
   if (!isValidEvaluationBlock(result.evaluation)) return false;
   if (!isValidWorldState(result.worldState)) return false;
+  if (!isValidEmbodimentBlock(result.embodiment)) return false;
 
   const expectedResultId = `result_${hashValue({
+    type: result.type,
+    schemaVersion: result.schemaVersion,
     handoffId: result.handoffId,
+    proposalId: result.proposalId,
+    actorId: result.actorId,
+    townId: result.townId,
+    proposalType: result.proposalType,
+    command: result.command,
+    authorityCommands: result.authorityCommands,
     status: result.status,
     accepted: result.accepted,
     executed: result.executed,
     reasonCode: result.reasonCode,
     evaluation: result.evaluation,
-    worldState: result.worldState
+    worldState: result.worldState,
+    embodiment: result.embodiment
   })}`;
 
   return result.resultId === expectedResultId;

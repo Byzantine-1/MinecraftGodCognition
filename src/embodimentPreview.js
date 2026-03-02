@@ -52,6 +52,10 @@ function buildAuthority() {
   };
 }
 
+function selectExecutionResultSchema(result) {
+  return result?.type ?? result?.schemaVersion ?? null;
+}
+
 /**
  * Create a preview-only embodiment request from accepted execution output.
  * @param {Object} decisionInspection
@@ -84,7 +88,7 @@ export function createEmbodimentRequestPreview(decisionInspection, executionResu
     authority: buildAuthority(),
     sourceSchemas: {
       decisionInspection: decisionInspection.schemaVersion,
-      executionResult: executionResult.schemaVersion,
+      executionResult: selectExecutionResultSchema(executionResult),
       immersionResult: immersionResult?.schemaVersion ?? null
     },
     proposalId: selectedProposal.proposalId,

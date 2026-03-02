@@ -51,7 +51,8 @@ describe('Deterministic Demo Flow', () => {
     assert.strictEqual(report.demoMode, 'deterministic-local');
     assert.strictEqual(report.decisionInspection.schemaVersion, 'decision-inspection.v1');
     assert.strictEqual(report.executionHandoff.schemaVersion, 'execution-handoff.v1');
-    assert.strictEqual(report.executionResult.schemaVersion, 'execution-result.v1');
+    assert.strictEqual(report.executionResult.type, 'execution-result.v1');
+    assert.strictEqual(report.executionResult.schemaVersion, 1);
     assert.strictEqual(report.immersionResult.schemaVersion, 'immersion-result.v1');
     assert.strictEqual(report.embodimentPreview.schemaVersion, 'embodiment-preview.v1');
     assert.strictEqual(report.executionHandoff.advisory, true);
