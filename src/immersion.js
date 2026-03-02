@@ -3,6 +3,11 @@ import { isValidProposal } from './proposalDsl.js';
 import { isValidExecutionHandoff, isValidExecutionResult } from './executionHandoff.js';
 import { SchemaVersion } from './schemaVersions.js';
 import { createQwenProvider } from './immersionProviders/qwenProvider.js';
+import {
+  createWorldMemoryCanonGuardrail,
+  isValidWorldMemoryContext,
+  normalizeWorldMemoryContext
+} from './worldMemoryContext.js';
 
 export const ImmersionArtifactType = Object.freeze([
   'leader-speech',
@@ -22,7 +27,8 @@ const narrativeContextKeys = Object.freeze([
   'chronicleSummary',
   'factionTone',
   'speakerVoiceProfiles',
-  'canonGuardrails'
+  'canonGuardrails',
+  'worldMemory'
 ]);
 
 const artifactGuidance = Object.freeze({
@@ -206,6 +212,7 @@ export function isValidNarrativeContext(narrativeContext) {
     }
   }
   if (hasOwn(narrativeContext, 'canonGuardrails') && !isValidCanonGuardrails(narrativeContext.canonGuardrails)) return false;
+  if (hasOwn(narrativeContext, 'worldMemory') && !isValidWorldMemoryContext(narrativeContext.worldMemory)) return false;
 
   return true;
 }
@@ -283,6 +290,10 @@ export function normalizeNarrativeContext(narrativeContext) {
               : {})
           }
         }
+      : {})
+    ,
+    ...(narrativeContext.worldMemory
+      ? { worldMemory: normalizeWorldMemoryContext(narrativeContext.worldMemory) }
       : {})
   });
 }
@@ -549,6 +560,9 @@ function buildCanonSafetyLines(input) {
   }
   if (canonGuardrails?.requiredDisclaimers?.length) {
     lines.push(`- Preserve these disclaimers when relevant: ${canonGuardrails.requiredDisclaimers.join('; ')}.`);
+  }
+  if (narrativeContext?.worldMemory) {
+    lines.push(`- ${createWorldMemoryCanonGuardrail(narrativeContext.worldMemory)}`);
   }
 
   return lines;

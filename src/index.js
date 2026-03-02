@@ -67,6 +67,15 @@ export {
   resolveImmersionProvider
 } from './immersion.js';
 export {
+  createNarrativeContextWithWorldMemory,
+  isValidWorldMemoryContext,
+  MaxWorldMemoryChronicleRecords,
+  MaxWorldMemoryHistoryRecords,
+  normalizeWorldMemoryContext,
+  WorldMemoryContextSchemaVersion,
+  WorldMemoryContextType
+} from './worldMemoryContext.js';
+export {
   createEmbodimentRequestPreview,
   isValidEmbodimentRequestPreview
 } from './embodimentPreview.js';
