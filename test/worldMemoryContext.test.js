@@ -289,6 +289,15 @@ describe('World Memory Narrative Context', () => {
 
     assert.strictEqual(isValidWorldMemoryContext(memoryWorldMemory), true);
     assert.strictEqual(isValidWorldMemoryContext(sqliteWorldMemory), true);
+    assert.strictEqual(memoryWorldMemory.townIdentity.townId, 'alpha');
+    assert.strictEqual(memoryWorldMemory.townIdentity.name, 'Alpha');
+    assert.strictEqual(Array.isArray(memoryWorldMemory.keyActors), true);
+    assert(memoryWorldMemory.keyActors.length >= 3);
+    assert(memoryWorldMemory.keyActors.length <= 8);
+    assert.deepStrictEqual(
+      memoryWorldMemory.keyActors.map((actor) => actor.role).slice(0, 3),
+      ['mayor', 'captain', 'warden']
+    );
     assert.deepStrictEqual(
       normalizeWorldMemoryContext(sqliteWorldMemory),
       normalizeWorldMemoryContext(memoryWorldMemory)
@@ -315,6 +324,11 @@ describe('World Memory Narrative Context', () => {
     assert.strictEqual(parsed.scope.townId, 'alpha');
     assert.strictEqual(parsed.recentChronicle.length, 2);
     assert.strictEqual(parsed.recentHistory.length, 3);
+    assert.strictEqual(parsed.townIdentity.townId, 'alpha');
+    assert.strictEqual(parsed.townIdentity.status, 'active');
+    assert.deepStrictEqual(parsed.townIdentity.tags, []);
+    assert.strictEqual(Array.isArray(parsed.keyActors), true);
+    assert(parsed.keyActors.length >= 3);
     assert.strictEqual(parseWorldMemoryContextLine('not json'), null);
   });
 

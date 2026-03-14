@@ -226,6 +226,56 @@ function createCanonicalWorldMemory() {
   };
 }
 
+function createAuthoritativeIdentityWorldMemory() {
+  return {
+    ...createCanonicalWorldMemory(),
+    townIdentity: {
+      townId: 'town-immersion',
+      name: 'Immersion Reach',
+      status: 'active',
+      region: 'east marches',
+      tags: ['trade', 'frontier']
+    },
+    keyActors: [
+      {
+        actorId: 'town-immersion.mayor',
+        townId: 'town-immersion',
+        name: 'Mayor Elira Vale',
+        role: 'mayor',
+        status: 'active'
+      },
+      {
+        actorId: 'town-immersion.captain',
+        townId: 'town-immersion',
+        name: 'Captain Rowan Pike',
+        role: 'captain',
+        status: 'active'
+      },
+      {
+        actorId: 'town-immersion.warden',
+        townId: 'town-immersion',
+        name: 'Warden Sera Flint',
+        role: 'warden',
+        status: 'active'
+      },
+      {
+        actorId: 'town-immersion.townsfolk.ava',
+        townId: 'town-immersion',
+        name: 'Ava Reed',
+        role: 'townsfolk',
+        status: 'active'
+      },
+      {
+        actorId: 'town-immersion.townsfolk.bram',
+        townId: 'town-immersion',
+        name: 'Bram Dyer',
+        role: 'townsfolk',
+        status: 'active'
+      }
+    ]
+  };
+}
+
 function createRankingWorldMemory() {
   const worldMemory = createCanonicalWorldMemory();
 
@@ -741,6 +791,138 @@ describe('Immersion Adapter', () => {
       assert(shaped.recentChronicle.every(entry => baseChronicleIds.has(entry.sourceRecordId)));
       assert(shaped.recentHistory.every(entry => baseHistoryIds.has(`${entry.handoffId}:${entry.summary}`)));
     }
+  });
+
+  it('should prefer authoritative key actor identity for officeholder roles when present', () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-immersion',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createAuthoritativeIdentityWorldMemory()
+      })
+    });
+
+    const continuity = selectActorContinuity(input);
+    const prompt = buildImmersionPrompt(input);
+
+    assert.strictEqual(continuity.role, 'mayor');
+    assert.strictEqual(continuity.actorId, 'town-immersion.mayor');
+    assert.strictEqual(continuity.actorName, 'Mayor Elira Vale');
+    assert.strictEqual(continuity.displayName, 'Mayor Elira Vale');
+    assert.strictEqual(continuity.actorRole, 'mayor');
+    assert.strictEqual(continuity.actorTitle, 'Mayor');
+    assert.strictEqual(continuity.townIdentity.townId, 'town-immersion');
+    assert.strictEqual(continuity.townIdentity.name, 'Immersion Reach');
+    assert(prompt.system.includes('Actor continuity anchor: Mayor Elira Vale is the recurring mayor perspective for Immersion Reach.'));
+  });
+
+  it('should choose townsfolk representatives deterministically from authoritative key actors', () => {
+    const firstInput = createStructuredImmersionInput({
+      artifactType: 'town-rumor',
+      actorId: 'townsfolk:seed-a',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createAuthoritativeIdentityWorldMemory()
+      })
+    });
+    const secondInput = createStructuredImmersionInput({
+      artifactType: 'town-rumor',
+      actorId: 'townsfolk:seed-a',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createAuthoritativeIdentityWorldMemory()
+      })
+    });
+    const differentSeedInput = createStructuredImmersionInput({
+      artifactType: 'town-rumor',
+      actorId: 'townsfolk:seed-b',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createAuthoritativeIdentityWorldMemory()
+      })
+    });
+
+    const firstContinuity = selectActorContinuity(firstInput);
+    const secondContinuity = selectActorContinuity(secondInput);
+    const differentContinuity = selectActorContinuity(differentSeedInput);
+
+    assert.deepStrictEqual(firstContinuity, secondContinuity);
+    assert.strictEqual(firstContinuity.role, 'townsfolk');
+    assert.strictEqual(firstContinuity.actorRole, 'townsfolk');
+    assert.strictEqual(firstContinuity.townIdentity.townId, 'town-immersion');
+    assert(['town-immersion.townsfolk.ava', 'town-immersion.townsfolk.bram'].includes(firstContinuity.actorId));
+    assert(['Ava Reed', 'Bram Dyer'].includes(firstContinuity.actorName));
+    assert(['town-immersion.townsfolk.ava', 'town-immersion.townsfolk.bram'].includes(differentContinuity.actorId));
+  });
+
+  it('should preserve previous synthetic continuity behavior when authoritative identity fields are absent', () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-immersion',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createCanonicalWorldMemory()
+      })
+    });
+
+    const continuity = selectActorContinuity(input);
+
+    assert.strictEqual(continuity.actorId, 'mayor-immersion');
+    assert.strictEqual(continuity.displayName, 'Mayor mayor-immersion');
+    assert.strictEqual('actorName' in continuity, false);
+    assert.strictEqual('townIdentity' in continuity, false);
+  });
+
+  it('should keep provider and fallback paths aligned on authoritative actor continuity context', async () => {
+    const input = createStructuredImmersionInput({
+      artifactType: 'leader-speech',
+      actorId: 'mayor-immersion',
+      narrativeContext: createNarrativeContext({
+        worldMemory: createAuthoritativeIdentityWorldMemory(),
+        speakerVoiceProfiles: [
+          {
+            speakerId: 'town-immersion.mayor',
+            register: 'formal',
+            style: 'civic',
+            values: ['continuity', 'duty'],
+            bannedPhrases: ['glorious dawn']
+          }
+        ]
+      })
+    });
+    const prompt = buildImmersionPrompt(input);
+    let requestBody = null;
+
+    const providerResult = await generateImmersion(input, {
+      env: {
+        LLM_PROVIDER: 'qwen',
+        LLM_API_KEY: 'test-key',
+        LLM_BASE_URL: 'https://llm.example/v1',
+        LLM_MODEL: 'qwen-max'
+      },
+      fetchImpl: async (_url, init) => {
+        requestBody = JSON.parse(init.body);
+        return {
+          ok: true,
+          async json() {
+            return {
+              choices: [
+                {
+                  message: {
+                    content: 'Mayor Elira Vale addressed Immersion Reach with calm resolve.'
+                  }
+                }
+              ]
+            };
+          }
+        };
+      }
+    });
+    const fallbackResult = await generateImmersion(input, { env: {} });
+
+    assert.deepStrictEqual(requestBody.messages[1].content, prompt.user);
+    assert.strictEqual(providerResult.prompt.hash, prompt.promptHash);
+    assert.strictEqual(fallbackResult.prompt.hash, prompt.promptHash);
+    assert(prompt.user.includes('"actorId":"town-immersion.mayor"'));
+    assert(prompt.user.includes('"displayName":"Mayor Elira Vale"'));
+    assert(prompt.user.includes('"townIdentity":{"name":"Immersion Reach"'));
+    assert(fallbackResult.content.includes('Mayor Elira Vale'));
   });
 
   it('should derive stable actor-specific continuity from the same role and memory', () => {

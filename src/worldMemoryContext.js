@@ -4,6 +4,10 @@ export const WorldMemoryContextType = SchemaVersion.WORLD_MEMORY_CONTEXT;
 export const WorldMemoryContextSchemaVersion = 1;
 export const MaxWorldMemoryChronicleRecords = 5;
 export const MaxWorldMemoryHistoryRecords = 5;
+export const MaxWorldMemoryKeyActors = 8;
+export const MaxWorldMemoryTownIdentityTags = 12;
+export const MaxWorldMemoryKeyActorRoleRepresentatives = 2;
+const worldMemoryActorRoleOrder = Object.freeze(['mayor', 'captain', 'warden', 'townsfolk']);
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -37,6 +41,36 @@ function normalizeStringList(values = [], maxEntries = 12, maxLen = 80) {
     .map(value => normalizeText(value, maxLen))
     .filter(Boolean)
     .slice(0, maxEntries);
+}
+
+function normalizeRole(value) {
+  const text = normalizeText(value, 40);
+  return text ? text.toLowerCase() : null;
+}
+
+function normalizeStatus(value) {
+  const text = normalizeText(value, 24);
+  return text ? text.toLowerCase() : null;
+}
+
+function normalizeTownIdentityTags(values) {
+  return normalizeStringList(values, MaxWorldMemoryTownIdentityTags, 80)
+    .map(value => value.toLowerCase())
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function compareKeyActors(left, right) {
+  const leftRoleIndex = worldMemoryActorRoleOrder.indexOf(left.role);
+  const rightRoleIndex = worldMemoryActorRoleOrder.indexOf(right.role);
+  const leftKnownRoleIndex = leftRoleIndex === -1 ? worldMemoryActorRoleOrder.length : leftRoleIndex;
+  const rightKnownRoleIndex = rightRoleIndex === -1 ? worldMemoryActorRoleOrder.length : rightRoleIndex;
+  if (leftKnownRoleIndex !== rightKnownRoleIndex) return leftKnownRoleIndex - rightKnownRoleIndex;
+  if (left.role !== right.role) return left.role.localeCompare(right.role);
+  if (left.status !== right.status) {
+    if (left.status === 'active') return -1;
+    if (right.status === 'active') return 1;
+  }
+  return left.actorId.localeCompare(right.actorId);
 }
 
 function hasUniqueNormalizedStrings(values) {
@@ -221,6 +255,74 @@ function isValidFactionSummary(value) {
   return true;
 }
 
+function isValidTownIdentity(value) {
+  if (!isPlainObject(value)) return false;
+  if (!hasOnlyKeys(value, ['townId', 'name', 'status', 'region', 'tags'])) return false;
+  if (!isNonEmptyString(value.townId)) return false;
+  if (!isNonEmptyString(value.name)) return false;
+  if (!isNonEmptyString(value.status)) return false;
+  if (value.region !== null && !isNonEmptyString(value.region)) return false;
+  if (!Array.isArray(value.tags) || !value.tags.every(isNonEmptyString) || !hasUniqueNormalizedStrings(value.tags)) return false;
+  if (value.tags.length > MaxWorldMemoryTownIdentityTags) return false;
+  return true;
+}
+
+function normalizeTownIdentity(value) {
+  return {
+    townId: normalizeText(value.townId, 80),
+    name: normalizeText(value.name, 80),
+    status: normalizeStatus(value.status),
+    region: normalizeText(value.region, 80),
+    tags: normalizeTownIdentityTags(value.tags)
+  };
+}
+
+function isValidKeyActor(value) {
+  if (!isPlainObject(value)) return false;
+  if (!hasOnlyKeys(value, ['actorId', 'townId', 'name', 'role', 'status'])) return false;
+  if (!isNonEmptyString(value.actorId)) return false;
+  if (!isNonEmptyString(value.townId)) return false;
+  if (!isNonEmptyString(value.name)) return false;
+  if (!isNonEmptyString(value.role)) return false;
+  if (!isNonEmptyString(value.status)) return false;
+  return true;
+}
+
+function normalizeKeyActor(value) {
+  return {
+    actorId: normalizeText(value.actorId, 120),
+    townId: normalizeText(value.townId, 80),
+    name: normalizeText(value.name, 80),
+    role: normalizeRole(value.role),
+    status: normalizeStatus(value.status)
+  };
+}
+
+function normalizeKeyActors(value) {
+  const normalized = (Array.isArray(value) ? value : [])
+    .map(normalizeKeyActor)
+    .filter((entry) => (
+      Boolean(entry.actorId) &&
+      Boolean(entry.townId) &&
+      Boolean(entry.name) &&
+      Boolean(entry.role) &&
+      Boolean(entry.status)
+    ))
+    .sort(compareKeyActors);
+
+  const seenActorIds = new Set();
+  const deduped = [];
+  for (const actor of normalized) {
+    const key = actor.actorId.toLowerCase();
+    if (seenActorIds.has(key)) continue;
+    seenActorIds.add(key);
+    deduped.push(actor);
+    if (deduped.length >= MaxWorldMemoryKeyActors) break;
+  }
+
+  return deduped;
+}
+
 function normalizeFactionSummary(value) {
   return {
     type: 'faction-history-summary.v1',
@@ -240,7 +342,7 @@ function normalizeFactionSummary(value) {
 
 export function isValidWorldMemoryContext(value) {
   if (!isPlainObject(value)) return false;
-  if (!hasOnlyKeys(value, ['type', 'schemaVersion', 'scope', 'recentChronicle', 'recentHistory', 'townSummary', 'factionSummary'])) {
+  if (!hasOnlyKeys(value, ['type', 'schemaVersion', 'scope', 'recentChronicle', 'recentHistory', 'townSummary', 'factionSummary', 'townIdentity', 'keyActors'])) {
     return false;
   }
   if (value.type !== WorldMemoryContextType) return false;
@@ -263,6 +365,13 @@ export function isValidWorldMemoryContext(value) {
   }
   if (hasOwn(value, 'factionSummary') && value.factionSummary !== undefined && value.factionSummary !== null && !isValidFactionSummary(value.factionSummary)) {
     return false;
+  }
+  if (hasOwn(value, 'townIdentity') && value.townIdentity !== undefined && value.townIdentity !== null && !isValidTownIdentity(value.townIdentity)) {
+    return false;
+  }
+  if (hasOwn(value, 'keyActors')) {
+    if (!Array.isArray(value.keyActors) || value.keyActors.length > MaxWorldMemoryKeyActors) return false;
+    if (!value.keyActors.every(isValidKeyActor)) return false;
   }
   return true;
 }
@@ -294,7 +403,9 @@ export function normalizeWorldMemoryContext(value) {
       .sort(compareHistoryEntries)
       .slice(0, historyLimit),
     ...(value.townSummary ? { townSummary: normalizeTownSummary(value.townSummary) } : {}),
-    ...(value.factionSummary ? { factionSummary: normalizeFactionSummary(value.factionSummary) } : {})
+    ...(value.factionSummary ? { factionSummary: normalizeFactionSummary(value.factionSummary) } : {}),
+    ...(value.townIdentity ? { townIdentity: normalizeTownIdentity(value.townIdentity) } : {}),
+    ...(Array.isArray(value.keyActors) ? { keyActors: normalizeKeyActors(value.keyActors) } : {})
   };
 }
 

@@ -74,6 +74,13 @@ const officeTitleByRole = Object.freeze({
   townsfolk: 'Townsfolk'
 });
 
+const authoritativeRoleOrder = Object.freeze([
+  Roles.MAYOR,
+  Roles.CAPTAIN,
+  Roles.WARDEN,
+  'townsfolk'
+]);
+
 const roleRankingSignals = Object.freeze({
   [Roles.MAYOR]: Object.freeze({
     chronicleKeywords: Object.freeze(['civic', 'decree', 'supplies', 'order', 'trade', 'mission', 'market', 'public']),
@@ -675,16 +682,21 @@ function selectSpeakerId(input) {
 function selectSpeakerCandidateIds(input) {
   const candidates = [];
   const artifactSpeakerId = selectSpeakerId(input);
+  const identity = resolveActorIdentity(input);
+
+  if (identity.authoritativeActor?.actorId) {
+    candidates.push(identity.authoritativeActor.actorId);
+  }
 
   if (input.artifactType === 'leader-speech') {
     candidates.push(selectActorId(input));
   }
 
   if (input.artifactType === 'town-rumor') {
-    candidates.push(`townsfolk:${selectTownId(input)}`);
+    candidates.push(`townsfolk:${identity.townId}`);
   }
 
-  candidates.push(selectMemoryRole(input));
+  candidates.push(identity.role);
   candidates.push(artifactSpeakerId);
 
   return uniqueStrings(candidates);
@@ -936,7 +948,9 @@ function buildWorldMemorySubset(worldMemory, {
     recentChronicle: recentChronicle.map((record) => ({ ...record })),
     recentHistory: recentHistory.map((record) => ({ ...record })),
     ...(includeTownSummary && worldMemory.townSummary ? { townSummary: worldMemory.townSummary } : {}),
-    ...(includeFactionSummary && worldMemory.factionSummary ? { factionSummary: worldMemory.factionSummary } : {})
+    ...(includeFactionSummary && worldMemory.factionSummary ? { factionSummary: worldMemory.factionSummary } : {}),
+    ...(worldMemory.townIdentity ? { townIdentity: worldMemory.townIdentity } : {}),
+    ...(Array.isArray(worldMemory.keyActors) ? { keyActors: worldMemory.keyActors.map((actor) => ({ ...actor })) } : {})
   });
 }
 
@@ -1152,6 +1166,132 @@ function selectMemoryRole(input) {
   return 'townsfolk';
 }
 
+function normalizeImmersionRole(value) {
+  if (!isNonEmptyString(value)) return null;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === Roles.MAYOR || normalized === Roles.CAPTAIN || normalized === Roles.WARDEN || normalized === 'townsfolk') {
+    return normalized;
+  }
+  return null;
+}
+
+function compareAuthoritativeActors(left, right) {
+  const leftRoleIndex = authoritativeRoleOrder.indexOf(left.role);
+  const rightRoleIndex = authoritativeRoleOrder.indexOf(right.role);
+  const leftKnownRoleIndex = leftRoleIndex === -1 ? authoritativeRoleOrder.length : leftRoleIndex;
+  const rightKnownRoleIndex = rightRoleIndex === -1 ? authoritativeRoleOrder.length : rightRoleIndex;
+  if (leftKnownRoleIndex !== rightKnownRoleIndex) return leftKnownRoleIndex - rightKnownRoleIndex;
+  if (left.role !== right.role) return left.role.localeCompare(right.role);
+  if (left.status !== right.status) {
+    if (left.status === 'active') return -1;
+    if (right.status === 'active') return 1;
+  }
+  return left.actorId.localeCompare(right.actorId);
+}
+
+function normalizeAuthoritativeKeyActors(worldMemory) {
+  const actors = (Array.isArray(worldMemory?.keyActors) ? worldMemory.keyActors : [])
+    .filter((actor) => actor && typeof actor === 'object' && !Array.isArray(actor))
+    .map((actor) => ({
+      actorId: trimOrNull(actor.actorId),
+      townId: trimOrNull(actor.townId),
+      name: trimOrNull(actor.name),
+      role: normalizeImmersionRole(actor.role),
+      status: trimOrNull(actor.status)?.toLowerCase() ?? null
+    }))
+    .filter((actor) => (
+      Boolean(actor.actorId) &&
+      Boolean(actor.townId) &&
+      Boolean(actor.name) &&
+      Boolean(actor.role) &&
+      Boolean(actor.status)
+    ))
+    .sort(compareAuthoritativeActors);
+
+  const seen = new Set();
+  const deduped = [];
+  for (const actor of actors) {
+    const actorKey = actor.actorId.toLowerCase();
+    if (seen.has(actorKey)) continue;
+    seen.add(actorKey);
+    deduped.push(actor);
+  }
+  return deduped;
+}
+
+function selectDeterministicAuthoritativeActor(candidates, seedPayload) {
+  if (!candidates.length) {
+    return null;
+  }
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  const hash = hashValue({
+    ...seedPayload,
+    actorIds: candidates.map((candidate) => candidate.actorId)
+  });
+  const index = Number.parseInt(hash.slice(0, 8), 16) % candidates.length;
+  return candidates[index] ?? candidates[0];
+}
+
+function selectAuthoritativeActorForRole({ role, worldMemory, fallbackActorId, townId }) {
+  const actors = normalizeAuthoritativeKeyActors(worldMemory).filter((actor) => actor.townId === townId);
+  if (!actors.length) {
+    return null;
+  }
+
+  if (role === 'townsfolk') {
+    const townsfolkActors = actors.filter((actor) => actor.role === 'townsfolk');
+    return selectDeterministicAuthoritativeActor(townsfolkActors, {
+      role,
+      townId,
+      fallbackActorId
+    });
+  }
+
+  const roleActors = actors.filter((actor) => actor.role === role);
+  if (!roleActors.length) {
+    return null;
+  }
+  return roleActors[0];
+}
+
+function resolveActorIdentity(input) {
+  const role = selectMemoryRole(input);
+  const worldMemory = selectFocusedWorldMemory(input);
+  const townIdentity = worldMemory?.townIdentity ?? null;
+  const resolvedTownId = townIdentity?.townId ?? selectTownId(input);
+  const fallbackActorId = role === 'townsfolk'
+    ? `townsfolk:${resolvedTownId}`
+    : selectActorId(input);
+  const authoritativeActor = selectAuthoritativeActorForRole({
+    role,
+    worldMemory,
+    fallbackActorId,
+    townId: resolvedTownId
+  });
+  const resolvedRole = authoritativeActor?.role ?? role;
+  const officeTitle = officeTitleByRole[resolvedRole] ?? 'Speaker';
+  const actorId = authoritativeActor?.actorId ?? fallbackActorId;
+  const displayName = authoritativeActor?.name ?? (
+    role === 'townsfolk'
+      ? `Townsfolk of ${resolvedTownId}`
+      : `${officeTitle} ${actorId}`
+  );
+
+  return {
+    role,
+    worldMemory,
+    townIdentity,
+    townId: resolvedTownId,
+    officeTitle,
+    actorId,
+    displayName,
+    authoritativeActor
+  };
+}
+
 function selectFocusedWorldMemory(input) {
   const narrativeContext = normalizeNarrativeContext(input.narrativeContext);
   return selectWorldMemoryForRole(selectMemoryRole(input), input.artifactType, narrativeContext?.worldMemory);
@@ -1209,36 +1349,46 @@ export function selectActorContinuity(input) {
     throw new Error('Invalid immersion artifact type');
   }
 
-  const role = selectMemoryRole(input);
-  const townId = selectTownId(input);
-  const actorId = role === 'townsfolk'
-    ? `townsfolk:${townId}`
-    : selectActorId(input);
-  const officeTitle = officeTitleByRole[role] ?? 'Speaker';
+  const identity = resolveActorIdentity(input);
   const speakerProfile = selectSpeakerVoiceProfile(input);
   const speakerId = speakerProfile?.speakerId ?? selectSpeakerCandidateIds(input)[0] ?? selectSpeakerId(input);
-  const worldMemory = selectFocusedWorldMemory(input);
   const recentConcern = selectStableActorConcern(
-    actorId,
-    role,
-    buildActorContinuityConcernCandidates(worldMemory)
+    identity.actorId,
+    identity.role,
+    buildActorContinuityConcernCandidates(identity.worldMemory)
   );
 
   return normalizeJsonValue({
-    actorId,
-    role,
-    officeTitle,
-    officeholderId: role === 'townsfolk' ? `townsfolk:${townId}` : `${role}:${townId}`,
-    displayName: role === 'townsfolk' ? `Townsfolk of ${townId}` : `${officeTitle} ${actorId}`,
+    actorId: identity.actorId,
+    role: identity.role,
+    officeTitle: identity.officeTitle,
+    officeholderId: identity.authoritativeActor?.actorId ?? (
+      identity.role === 'townsfolk'
+        ? `townsfolk:${identity.townId}`
+        : `${identity.role}:${identity.townId}`
+    ),
+    displayName: identity.displayName,
     speakerId,
-    recentConcern
+    recentConcern,
+    ...(identity.authoritativeActor
+      ? {
+          actorName: identity.authoritativeActor.name,
+          actorTitle: officeTitleByRole[identity.authoritativeActor.role] ?? 'Speaker',
+          actorRole: identity.authoritativeActor.role,
+          actorStatus: identity.authoritativeActor.status
+        }
+      : {}),
+    ...(identity.townIdentity ? { townIdentity: identity.townIdentity } : {})
   });
 }
 
 function buildActorContinuityLines(input) {
   const actorContinuity = selectActorContinuity(input);
+  const continuityTownLabel = actorContinuity.townIdentity?.name
+    ?? actorContinuity.townIdentity?.townId
+    ?? selectTownId(input);
   const lines = [
-    `Actor continuity anchor: ${actorContinuity.displayName} is the recurring ${actorContinuity.role} perspective for ${selectTownId(input)}.`
+    `Actor continuity anchor: ${actorContinuity.displayName} is the recurring ${actorContinuity.role} perspective for ${continuityTownLabel}.`
   ];
 
   if (actorContinuity.recentConcern) {
@@ -1419,7 +1569,7 @@ function buildFactionMemoryCue(summary) {
 
 function buildFallbackText(input) {
   const actorContinuity = selectActorContinuity(input);
-  const townId = selectTownId(input);
+  const townId = actorContinuity.townIdentity?.townId ?? selectTownId(input);
   const actorId = selectActorId(input);
   const proposalType = selectProposalType(input);
   const command = selectCommand(input);
