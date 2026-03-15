@@ -194,7 +194,7 @@ function normalizeExecutionCounts(value) {
 
 function isValidTownSummary(value) {
   if (!isPlainObject(value)) return false;
-  if (!hasOnlyKeys(value, ['type', 'schemaVersion', 'townId', 'chronicleCount', 'historyCount', 'lastChronicleAt', 'lastHistoryAt', 'hope', 'dread', 'activeMajorMissionId', 'recentImpactCount', 'crierQueueDepth', 'activeProjectCount', 'factions', 'executionCounts'])) {
+  if (!hasOnlyKeys(value, ['type', 'schemaVersion', 'townId', 'chronicleCount', 'historyCount', 'lastChronicleAt', 'lastHistoryAt', 'hope', 'dread', 'activeMajorMissionId', 'recentImpactCount', 'crierQueueDepth', 'activeProjectCount', 'activeSupportOrderLabel', 'activeSupportOrderType', 'activeSupportOrderStage', 'activeSupportOrderDueDay', 'activeSupportOrderDuePhase', 'activeSupportOrderAutoManaged', 'factions', 'executionCounts'])) {
     return false;
   }
   if (value.type !== 'town-history-summary.v1') return false;
@@ -210,6 +210,12 @@ function isValidTownSummary(value) {
   if (!Number.isInteger(value.recentImpactCount) || value.recentImpactCount < 0) return false;
   if (!Number.isInteger(value.crierQueueDepth) || value.crierQueueDepth < 0) return false;
   if (!Number.isInteger(value.activeProjectCount) || value.activeProjectCount < 0) return false;
+  if (value.activeSupportOrderLabel !== null && !isNonEmptyString(value.activeSupportOrderLabel)) return false;
+  if (value.activeSupportOrderType !== null && !isNonEmptyString(value.activeSupportOrderType)) return false;
+  if (value.activeSupportOrderStage !== null && (!Number.isInteger(value.activeSupportOrderStage) || value.activeSupportOrderStage < 0)) return false;
+  if (value.activeSupportOrderDueDay !== null && (!Number.isInteger(value.activeSupportOrderDueDay) || value.activeSupportOrderDueDay < 0)) return false;
+  if (value.activeSupportOrderDuePhase !== null && !['day', 'night'].includes(value.activeSupportOrderDuePhase)) return false;
+  if (value.activeSupportOrderAutoManaged !== null && typeof value.activeSupportOrderAutoManaged !== 'boolean') return false;
   if (!Array.isArray(value.factions) || !value.factions.every(isNonEmptyString) || !hasUniqueNormalizedStrings(value.factions)) return false;
   if (!isValidExecutionCounts(value.executionCounts)) return false;
   return true;
@@ -230,6 +236,12 @@ function normalizeTownSummary(value) {
     recentImpactCount: Number(value.recentImpactCount) || 0,
     crierQueueDepth: Number(value.crierQueueDepth) || 0,
     activeProjectCount: Number(value.activeProjectCount) || 0,
+    activeSupportOrderLabel: normalizeText(value.activeSupportOrderLabel, 160),
+    activeSupportOrderType: normalizeText(value.activeSupportOrderType, 40),
+    activeSupportOrderStage: normalizeNullableInteger(value.activeSupportOrderStage),
+    activeSupportOrderDueDay: normalizeNullableInteger(value.activeSupportOrderDueDay),
+    activeSupportOrderDuePhase: value.activeSupportOrderDuePhase === null ? null : normalizeText(value.activeSupportOrderDuePhase, 20),
+    activeSupportOrderAutoManaged: value.activeSupportOrderAutoManaged === null ? null : value.activeSupportOrderAutoManaged === true,
     factions: normalizeStringList(value.factions, 12, 80).sort((left, right) => left.localeCompare(right)),
     executionCounts: normalizeExecutionCounts(value.executionCounts)
   };
